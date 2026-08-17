@@ -1,0 +1,16 @@
+# Python bytecode. A first run regenerates this inside the installed skill folder,
+# so it must never be part of what ships.
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
+
+# Playwright, if you install it into the skill folder as INSTALL.md step 9 asks
+node_modules/
+package-lock.json
+
+# Vendored third party, fetched by the reader rather than shipped
+vendor/
+gsap.min.js

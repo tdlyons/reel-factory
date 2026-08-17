@@ -1,0 +1,84 @@
+{
+  "_comment": "Worked example for reel-compose.py --cards. The numbers are invented, replace them with your own. Times are seconds into a roughly 68 second take, and every card except the endcard needs both 'at' and 'out'. The endcard renders on the --cut variant only. Run `python3 $SKILL/scripts/reel_cards.py --list` for the fields each type accepts, where SKILL is ~/.claude/skills/video-reel-factory.",
+  "cards": [
+    {
+      "type": "quote",
+      "at": 1.2,
+      "out": 7.0,
+      "text": "I left it running **overnight**. This is what came back.",
+      "attr": "Night 1 of 6"
+    },
+    {
+      "type": "stat",
+      "at": 8.0,
+      "out": 17.5,
+      "eyebrow": "Overnight run",
+      "value": 12000,
+      "sub": "records checked while I was **asleep**",
+      "count_dur": 2.2
+    },
+    {
+      "type": "table",
+      "at": 18.5,
+      "out": 32.0,
+      "tag": "Raw output",
+      "columns": ["Source", "Rows", "Errors", "Fixed"],
+      "rows": [
+        ["inventory-export", "3,000", "30", "30"],
+        ["pricing-feed", "2,500", "10", "10"],
+        ["supplier-a", "2,000", "100", "97"],
+        ["supplier-b", "1,500", "5", "5"],
+        ["returns-log", "1,200", "60", "59"],
+        ["archive-2023", "900", "5", "5"],
+        ["manual-entries", "600", "40", "37"],
+        ["misc", "300", "5", "5"]
+      ]
+    },
+    {
+      "type": "bars",
+      "at": 33.0,
+      "out": 47.0,
+      "title": "Errors caught per week",
+      "sub": "Six weeks of the same job, same inputs",
+      "series": [
+        {"label": "Wk 1", "value": 46},
+        {"label": "Wk 2", "value": 44},
+        {"label": "Wk 3", "value": 49},
+        {"label": "Wk 4", "value": 45},
+        {"label": "Wk 5", "value": 47},
+        {"label": "Wk 6", "value": 43}
+      ],
+      "rule": {"label": "6-week mean", "at": 40.0},
+      "note": "The rate never moved. The **backlog** did.",
+      "note_at": 43.0
+    },
+    {
+      "type": "compare",
+      "at": 48.0,
+      "out": 55.5,
+      "title": "Same job, **two ways**",
+      "left": {"label": "By hand", "value": "6h", "note": "every Monday, one person"},
+      "right": {"label": "Scripted", "value": "9m", "note": "unattended, overnight"}
+    },
+    {
+      "type": "list",
+      "at": 56.0,
+      "out": 62.0,
+      "title": "Rebuild it in an evening",
+      "items": [
+        "Export the raw rows, no cleanup",
+        "Write the check as a **single script**",
+        "Schedule it, then read the diff in the morning"
+      ],
+      "stagger": 1.4
+    },
+    {
+      "type": "endcard",
+      "at": 62.7,
+      "title": "The whole script",
+      "sub": "Every check, the schedule, and the failure log it writes",
+      "pill": "Link in the comments",
+      "foot": "your handle here"
+    }
+  ]
+}

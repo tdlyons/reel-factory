@@ -1,0 +1,55 @@
+<!doctype html>
+<!--
+  reel-thumbnail-template.html: 1280x720 video thumbnail built around a vertical
+  frame lifted from the finished cut.
+
+  Needs: a copy of this file with the %%SLOTS%% filled in, thumb-bg.jpg sitting
+  next to it, and Playwright to screenshot it.
+
+  Example:
+    cp reel-thumbnail-template.html thumbnail.html
+    cp chosen-frame.png thumb-bg.jpg          # must sit next to thumbnail.html
+    node screenshot-thumb.mjs thumbnail.html thumb-2x.png
+    ffmpeg -y -i thumb-2x.png -vf scale=1280:720 -q:v 2 thumbnail.jpg
+
+  Slots: %%KICKER%%, %%HEAD_LINE1%%, %%HEAD_HIGHLIGHT%%, %%BRAND%%
+-->
+<html><head><meta charset="utf-8"><style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1280px;height:720px;overflow:hidden}
+  .stage{position:relative;width:1280px;height:720px;background:#0a0a0c;
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Arial,sans-serif}
+  /* thumb-bg.jpg must sit next to this file: a 1080x1920 frame lifted from the finished cut.
+     The source is 9:16, so it is never cropped to fill. It is blurred for the field and
+     shown intact in the panel on the right. */
+  .bg{position:absolute;inset:-60px;background-image:url('thumb-bg.jpg');background-size:cover;
+    background-position:center;filter:blur(34px) brightness(.34) saturate(.8)}
+  .panel{position:absolute;right:56px;top:36px;bottom:36px;width:364px;border-radius:26px;
+    background-image:url('thumb-bg.jpg');background-size:cover;background-position:center 30%;
+    box-shadow:0 26px 70px rgba(0,0,0,.62);border:3px solid rgba(255,255,255,.14)}
+  .head{position:absolute;left:64px;top:96px;width:740px}
+  .kick{font-size:26px;font-weight:700;letter-spacing:.20em;color:#7fc4ff;text-transform:uppercase;
+    margin-bottom:22px;white-space:nowrap}
+  .h1{font-size:92px;font-weight:800;line-height:.94;color:#fff;letter-spacing:-.03em}
+  .h1 .hl{color:#0a0a0c;background:#0071e3;padding:2px 16px 8px;border-radius:10px;
+    display:inline-block;margin-top:14px;box-shadow:0 8px 26px rgba(0,113,227,.45)}
+  /* max-width keeps the brand line clear of the panel, which starts at x=860 */
+  .brand{position:absolute;left:64px;bottom:56px;max-width:740px;white-space:nowrap;overflow:hidden;
+    font-size:25px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:#aeb4bf}
+  .brand .dot{color:#0071e3;margin:0 12px}
+  .brand b{color:#fff}
+</style></head><body>
+  <div class="stage">
+    <div class="bg"></div>
+    <div class="panel"></div>
+    <div class="head">
+      <!-- Three slots. Keep KICKER on one line. HEAD_LINE1 + HEAD_HIGHLIGHT should read
+           in under a second at phone size, so aim for 2 to 5 words total. -->
+      <div class="kick">%%KICKER%%</div>
+      <div class="h1">%%HEAD_LINE1%%<br><span class="hl">%%HEAD_HIGHLIGHT%%</span></div>
+    </div>
+    <!-- One line. Either a handle on its own, or name + <span class="dot">&middot;</span> + handle.
+         It is clipped at 740px so it can never run under the panel. -->
+    <div class="brand">%%BRAND%%</div>
+  </div>
+</body></html>
