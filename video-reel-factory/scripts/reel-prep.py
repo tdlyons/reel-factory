@@ -372,7 +372,7 @@ def main():
         if cut.get("gap"):
             R.append(f"Lands in a {cut['gap']['gap']}s gap after \"...{cut['gap']['after']}\".\n")
         R.append(f"The full-length platform keeps all {info['duration']}s. The neutral cut gets "
-                 f"{cut['cut_at']}s plus an end card.\n")
+                 f"{cut['cut_at']}s and ends there, on live footage.\n")
     else:
         R.append(f"{cut['reason']}\n")
     R.append("## Captions\n")

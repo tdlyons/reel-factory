@@ -1,9 +1,15 @@
 {
-  "_comment": "Worked example for reel-compose.py --cards. The numbers are invented, replace them with your own. Times are seconds into a roughly 68 second take, and every card except the endcard needs both 'at' and 'out'. The endcard renders on the --cut variant only. Run `python3 $SKILL/scripts/reel_cards.py --list` for the fields each type accepts, where SKILL is ~/.claude/skills/video-reel-factory.",
+  "_comment": "Worked example for reel-compose.py --cards. The numbers are invented, replace them with your own. Times are seconds into a roughly 68 second take. Every reel needs exactly one hook card, which takes no 'at' because it is pinned to 0, and every other card needs both 'at' and 'out'. Run `python3 $SKILL/scripts/reel_cards.py --list` for the fields each type accepts, where SKILL is ~/.claude/skills/video-reel-factory.",
   "cards": [
     {
+      "type": "hook",
+      "out": 3.6,
+      "kicker": "I left it running overnight",
+      "text": "12,000 records. **0 clicks**."
+    },
+    {
       "type": "quote",
-      "at": 1.2,
+      "at": 3.8,
       "out": 7.0,
       "text": "I left it running **overnight**. This is what came back.",
       "attr": "Night 1 of 6"
@@ -71,14 +77,6 @@
         "Schedule it, then read the diff in the morning"
       ],
       "stagger": 1.4
-    },
-    {
-      "type": "endcard",
-      "at": 62.7,
-      "title": "The whole script",
-      "sub": "Every check, the schedule, and the failure log it writes",
-      "pill": "Link in the comments",
-      "foot": "your handle here"
     }
   ]
 }

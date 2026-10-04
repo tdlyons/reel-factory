@@ -18,7 +18,7 @@ ls ~/.claude/skills/video-reel-factory/SKILL.md \
    ~/.claude/skills/video-reel-factory/assets
 ```
 
-The skill folder is self contained. Scripts, HTML templates and the example cards file all live inside it, and every command in `SKILL.md` refers to them through `~/.claude/skills/video-reel-factory/`. Nothing needs to be copied into a separate tools directory.
+The skill folder is self contained. Scripts, HTML templates, the hook library and the example cards file all live inside it, and every command in `SKILL.md` refers to them through `~/.claude/skills/video-reel-factory/`. Nothing needs to be copied into a separate tools directory.
 
 Start a new Claude Code session after copying so the skill is picked up.
 
@@ -32,13 +32,13 @@ Install instructions live at https://claude.com/claude-code
 
 ## 3. python3
 
-The pipeline scripts (`reel-prep.py`, `reel_markers.py`, `reel_cards.py`, `reel-compose.py`, `reel-verify.py`) use the Python standard library plus openai-whisper for transcription, covered in step 6. Nothing else. Python 3.8 or newer is enough.
+The pipeline scripts (`reel-prep.py`, `reel_markers.py`, `reel_cards.py`, `reel-compose.py`, `reel-trim.py`, `reel-preview.py`, `reel-sfx.py`, `reel-verify.py`) use the Python standard library plus openai-whisper for transcription, covered in step 6. Nothing else. Python 3.8 or newer is enough.
 
 Check: `python3 --version`
 
 ## 4. ffmpeg and ffprobe
 
-Used constantly: probing the source, extracting audio, sampling frames, compositing the overlay onto the footage, resizing the thumbnail. Both binaries must be on your PATH.
+Used constantly: probing the source, extracting audio, sampling frames, building a trimmed source, compositing the overlay onto the footage, mixing the card sound, resizing the thumbnail. Both binaries must be on your PATH.
 
 Check:
 
@@ -51,7 +51,7 @@ macOS: `brew install ffmpeg`. Debian or Ubuntu: `sudo apt install ffmpeg`. Windo
 
 ## 5. Node.js
 
-Needed for `npx hyperframes`, for the screenshot script, and for the optional keyword picker. Node 18 or newer, because the scripts use top-level await and `node:` imports.
+Needed for `npx hyperframes`, for the screenshot script that the preview and thumbnail steps both use, and for the optional keyword picker. Node 18 or newer, because the scripts use top-level await and `node:` imports.
 
 Check: `node --version`
 
@@ -157,9 +157,9 @@ GSAP is not MIT. The file's own header reads "Copyright 2024, GreenSock. All rig
 
 Check: `ls ~/my-reels/vendor/gsap.min.js` and, after a compose, `ls <project>/assets/gsap.min.js`
 
-## 9. Playwright (thumbnail and cover step only)
+## 9. Playwright (preview, thumbnail and cover)
 
-`assets/screenshot-thumb.mjs` opens the thumbnail and cover HTML templates in headless Chromium and screenshots them at 2x. Nothing else in the pipeline uses it, so if you skip the thumbnail step you can skip this.
+`assets/screenshot-thumb.mjs` opens an HTML page in headless Chromium and screenshots it at 2x. The thumbnail and cover steps call it directly, and `reel-preview.py` calls it for every preview frame, which is how you look at the composition on the real footage before rendering. Without Playwright there is no preview, so treat this step as required.
 
 Install it where the script can find it. `screenshot-thumb.mjs` imports Playwright by name, and ESM resolves a bare import from the importing module's own directory upwards, never from the directory you happen to be standing in. So installing into your working directory does nothing for this script, and neither does a global install. Install inside the skill folder, or anywhere above it such as `$HOME`:
 
@@ -202,6 +202,18 @@ Check: `tesseract --version`
 
 Without it, the prep report says the check did not run and you decide by looking at a frame. That is the same decision the skill asks you to make anyway when the check returns "cannot tell", so tesseract is a convenience rather than a requirement.
 
+## 11. A card sound effect (optional)
+
+`reel-sfx.py` mixes a short sound onto every card entrance. No sound ships with the skill, so supply one you have the rights to use: a soft whoosh or swell under a second long, as a WAV. Keep it somewhere stable and point the script at it once:
+
+```bash
+export REEL_SFX=~/my-reels/vendor/card-whoosh.wav
+```
+
+Check: `ls "$REEL_SFX"` and `python3 ~/.claude/skills/video-reel-factory/scripts/reel-sfx.py --help`
+
+Skip this step and the pipeline still runs; the card sound is the one phase you can leave out.
+
 ## Verify the whole set
 
 ```bash
@@ -213,7 +225,9 @@ npx hyperframes@0.7.92 --version
 python3 -c "import whisper; print('whisper ok')"
 ls ~/my-reels/video-projects ~/my-reels/vendor/gsap.min.js
 node ~/.claude/skills/video-reel-factory/assets/screenshot-thumb.mjs --help | head -1
+python3 ~/.claude/skills/video-reel-factory/scripts/reel-preview.py --help | head -1
 tesseract --version | head -1     # optional
+ls "$REEL_SFX"                    # optional
 ls ~/.claude/skills/video-reel-factory/SKILL.md
 ```
 

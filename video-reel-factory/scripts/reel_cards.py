@@ -12,11 +12,21 @@ build.
 
 House style is an Apple-minimal look: white surfaces, a single blue accent, an
 SF/system font stack, heavy whitespace. Rebrand by changing ACCENT, INK and
-MUTED below. Cards land in one of two bands: `stat` and `quote` at the top of the
-frame (ZONE_TOP, y=150), and `table`, `bars`, `list` and `compare` in the lower
-third (ZONE_LOWER, y=1000). On a 1080x1920 vertical selfie a face can reach as
-low as y=1200, so the lower band starts inside it on tight framing. Look at a
-snapshot and move a card with its own `y` when it lands on the speaker.
+MUTED below. Cards land in one of two bands: `stat`, `quote` and `image` at the
+top of the frame (ZONE_TOP, y=150), and `table`, `bars`, `list` and `compare` in
+the lower third (ZONE_LOWER, y=1000). On a 1080x1920 vertical selfie a face can
+reach as low as y=1200, so the lower band starts inside it on tight framing. Look
+at a preview and move a card with its own `y` when it lands on the speaker.
+
+ZONE_TOP sits inside the strip Instagram covers with its own UI (y < 269), so a
+card left there for an Instagram cut is partly under the Reels wordmark. The
+`hook` card is the one card meant to live at the top regardless. See the safe
+zone section of SKILL.md.
+
+The `hook` card is the exception to every timing rule. It is pinned to t=0, it
+is fully opaque on the first rendered frame, and it has no entrance animation,
+because a viewer decides in the first frame and a hook that fades in has already
+lost the ones who scrolled. reel-compose.py refuses to build without exactly one.
 
 Every card obeys the render contract:
   - state changes use paired gsap.set(), never tl.call(), because callbacks do
@@ -43,7 +53,12 @@ MUTED = "#86868b"
 # with `y`. Read the note in the module docstring before treating them as safe.
 ZONE_TOP = 150
 ZONE_LOWER = 1000
-CAPTION_TOP = 1690
+# The caption band's top edge. 1440 puts the text centre at roughly 79% of the
+# frame height. The old 1690 put captions at 88 to 97%, which is under the
+# platform UI on YouTube Shorts (channel name, title) and under the username and
+# caption text on Instagram Reels, so on a phone the captions were hidden.
+CAPTION_TOP = 1440
+HOOK_TOP = 132
 
 
 class CardValueError(ValueError):
@@ -52,6 +67,11 @@ class CardValueError(ValueError):
 
 def _esc(s):
     return (str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
+def _attr(s):
+    """Escape a value for a double-quoted HTML attribute. _esc alone leaves '"' open."""
+    return _esc(s).replace('"', "&quot;").replace("'", "&#39;")
 
 
 def _num(v, field, i=None, kind=None, where=None):
@@ -106,12 +126,14 @@ def _num_field(c, key, field_label, i, kind):
 # number does, instead of a raw KeyError or AttributeError thrown from inside a
 # render function halfway through building the page. None means presence only.
 REQUIRED_FIELDS = {
+    "hook":    {"text": None},
     "stat":    {"value": None},
     "table":   {"columns": list, "rows": list},
     "bars":    {"series": list},
     "list":    {"items": list},
     "compare": {"left": dict, "right": dict},
     "quote":   {"text": None},
+    "image":   {"src": None},
     "endcard": {},
 }
 
@@ -148,7 +170,8 @@ def normalise_card(i, c):
     c = dict(c)
     _require_fields(i, kind, c)
     for key in ("at", "out", "y", "value", "size", "count_dur", "colw",
-                "height", "note_at", "bar_height", "stagger"):
+                "height", "note_at", "bar_height", "stagger",
+                "kicker_size", "width", "x"):
         _num_field(c, key, key, i, kind)
 
     if c.get("widths") is not None:
@@ -261,6 +284,69 @@ def normalise_caption_lines(lines):
     return out
 
 
+CAPTION_MOVE_BOX = ("top", "height", "left", "right")
+CAPTION_ALIGN = ("left", "center", "right")
+
+
+def normalise_caption_moves(moves):
+    """
+    Validate cards.json's optional top-level "caption_moves" list.
+
+    Each entry re-seats the caption band at one moment, for a video whose layout
+    changes part way through (a wide talking head, then a full-frame screenshot
+    with the face in a corner) where no single caption position is clear of both.
+    Every value is written into the inline timeline, so the numbers go through
+    _num and 'align' must be one of three words. Returns a validated copy.
+    """
+    if moves is None:
+        return []
+    if not isinstance(moves, list):
+        raise CardValueError(f"cards.json: 'caption_moves' must be a list, got {type(moves).__name__}")
+    out = []
+    for k, m in enumerate(moves):
+        where = f"cards.json: caption_moves[{k}]"
+        if not isinstance(m, dict):
+            raise CardValueError(f"{where} must be a JSON object, got {type(m).__name__}")
+        if "at" not in m:
+            raise CardValueError(f"{where} is missing 'at'")
+        clean = {"at": _num(m["at"], "at", where=where)}
+        for key in CAPTION_MOVE_BOX + ("size",):
+            if key in m and m[key] is not None:
+                clean[key] = _num(m[key], key, where=where)
+        if m.get("align") is not None:
+            if m["align"] not in CAPTION_ALIGN:
+                raise CardValueError(
+                    f"{where}: 'align' must be one of {', '.join(CAPTION_ALIGN)}, got {m['align']!r}")
+            clean["align"] = m["align"]
+        if len(clean) == 1:
+            raise CardValueError(
+                f"{where} moves nothing. Give it at least one of "
+                f"{', '.join(CAPTION_MOVE_BOX)}, size or align.")
+        out.append(clean)
+    return sorted(out, key=lambda m: m["at"])
+
+
+def caption_moves_js(moves):
+    """
+    One gsap.set() per move, on the band (#caps) and on every line (.cline).
+    set() rather than to() so seeking to any frame reproduces the same state,
+    which is the render contract every card obeys.
+    """
+    js = []
+    for m in moves:
+        box = {k: f"{m[k]}px" for k in CAPTION_MOVE_BOX if k in m}
+        line = {}
+        if "size" in m:
+            line["fontSize"] = f"{m['size']}px"
+        if "align" in m:
+            line["textAlign"] = m["align"]
+        if box:
+            js.append(f'tl.set("#caps",{json.dumps(box)},{m["at"]});')
+        if line:
+            js.append(f'tl.set(".cline",{json.dumps(line)},{m["at"]});')
+    return ("\n" + "\n".join(js)) if js else ""
+
+
 def captions(lines, cid="caps"):
     """
     Word-timed captions from prep.json. Lines are clamped upstream, and their
@@ -333,7 +419,9 @@ def table(i, c):
             out += f'<span class="{cls}{k}" style="{style}">{_esc(v)}</span>'
         return out
     rows = "".join(f'<div class="trow">{cells(r,"td")}</div>' for r in c["rows"])
-    h = c.get("height", 600)
+    # 420 ends the card at y=1420 from the lower band, above the caption band at
+    # CAPTION_TOP. Taller tables scroll further but sit on the captions.
+    h = c.get("height", 420)
     css = f"""
 #{cid}{{left:60px;top:{c.get('y', ZONE_LOWER)}px;width:960px;height:{h}px;overflow:hidden}}
 #{cid} .thead{{display:flex;padding:22px 30px 16px;font-size:20px;font-weight:600;
@@ -500,10 +588,75 @@ tl.to("#{cid}",{{opacity:0,y:-26,duration:.45,ease:"power2.in"}},{c['out']});"""
     return css, html, js
 
 
+def hook(i, c):
+    """
+    The opening hook. HARD RULE: it is on screen at frame 0, fully opaque, with
+    no entrance animation. A viewer decides in the first frame, so a hook that
+    fades in over half a second has already lost the ones who scrolled.
+
+    This is the only card type with no `at`: it is pinned to 0. Give it `out`.
+
+    The kicker is 42px rather than the 24px an eyebrow uses. At eyebrow size it
+    measured about 9px tall on a 300px-wide phone thumbnail and read as
+    decoration, which matters because the sharpest element (a digit, an offer)
+    tends to land in the kicker. Override with `kicker_size` only to go bigger.
+
+    The claim uses text-wrap:balance so its lines come out even and a short word
+    is not stranded at the end of line one away from its noun. The renderer is
+    Chrome, which supports it natively.
+    """
+    cid = f"hk{i}"
+    css = f"""
+#{cid}{{left:60px;top:{c.get('y', HOOK_TOP)}px;width:960px;padding:44px 50px 48px;opacity:1}}
+#{cid} .k{{font-size:{c.get('kicker_size',42)}px;font-weight:800;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--blue);margin-bottom:14px;line-height:1.1}}
+#{cid} .h{{font-size:{c.get('size',68)}px;font-weight:700;color:var(--ink);
+  line-height:1.06;letter-spacing:-.032em;text-wrap:balance}}"""
+    html = (f'<div class="card" id="{cid}" style="opacity:1">'
+            + (f'<div class="k">{_esc(c["kicker"])}</div>' if c.get("kicker") else "")
+            + f'<div class="h">{_rich(c["text"])}</div></div>')
+    # Visible at t=0 with no tween in, so the first rendered frame already has it.
+    # The inline opacity:1 above covers the moment before the timeline runs.
+    js = f"""
+tl.set("#{cid}",{{opacity:1,y:0,scale:1}},0);
+tl.to("#{cid}",{{opacity:0,y:-30,duration:.42,ease:"power2.in"}},{c['out']});"""
+    return css, html, js
+
+
+def image(i, c):
+    """
+    A timed screenshot or UI insert, styled like the rest of the library (white
+    rounded card, same shadow) so a product screen reads as part of the video
+    rather than a pasted-in frame. `src` is a path relative to the project
+    directory: copy the PNG into the project before rendering. Crop it tight to
+    the thing the video points at, because a full browser window squeezed into a
+    900px card leaves the one field that matters unreadable.
+    """
+    cid = f"img{i}"
+    width = c.get("width", 900)
+    x = c.get("x", (1080 - width) // 2)
+    css = f"""
+#{cid}{{left:{x}px;top:{c.get('y', ZONE_TOP)}px;width:{width}px;padding:26px 26px 32px}}
+#{cid} .lbl{{font-size:24px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:16px;text-align:center}}
+#{cid} img{{width:100%;display:block;border-radius:16px;box-shadow:0 6px 24px rgba(0,0,0,.18)}}"""
+    label_html = f'<div class="lbl">{_esc(c["label"])}</div>' if c.get("label") else ""
+    html = f'<div class="card" id="{cid}">{label_html}<img src="{_attr(c["src"])}" alt=""></div>'
+    js = f"""
+tl.set("#{cid}",{{opacity:0,y:40,scale:.97}},0);
+tl.to("#{cid}",{{opacity:1,y:0,scale:1,duration:.5,ease:"back.out(1.4)"}},{c['at']});
+tl.to("#{cid}",{{opacity:0,y:-30,duration:.45,ease:"power2.in"}},{c['out']});"""
+    return css, html, js
+
+
 def endcard(i, c):
     """
     Full-bleed opaque close. Opaque is the point: it covers the frozen last
     frame of the base video so the piece ends deliberately instead of trailing.
+
+    Not for social cuts. A full-bleed card at the end stops the video dead and
+    breaks the loop, so reel-compose.py only renders one when --cut is run with
+    --endcard, for work that is not going to a vertical feed.
     """
     cid = f"end{i}"
     css = f"""
@@ -538,14 +691,18 @@ tl.to("#{cid} .pill",{{scale:1.04,duration:.5,ease:"sine.inOut",yoyo:true,repeat
 
 
 REGISTRY = {
-    "stat": stat, "table": table, "bars": bars,
-    "list": lister, "compare": compare, "quote": quote, "endcard": endcard,
+    "hook": hook, "stat": stat, "table": table, "bars": bars,
+    "list": lister, "compare": compare, "quote": quote, "image": image,
+    "endcard": endcard,
 }
 
 # Documentation for --help and for anyone writing cards.json by hand.
-# Every card also takes "at" (seconds), and every card except endcard takes
-# "out" (seconds). "y" overrides the vertical position on the 1080x1920 frame.
+# Every card except hook takes "at" (seconds), and every card except endcard
+# takes "out" (seconds). "y" overrides the vertical position on the 1080x1920 frame.
 CARD_FIELDS = {
+    "hook": "text (required, supports **accent**), kicker, size, kicker_size, y. "
+            "REQUIRED once per reel. Takes no 'at': it is pinned to 0, fully opaque on "
+            "frame 0, with no entrance animation",
     "stat": "value (number, required), eyebrow, sub (supports **accent**), size, count_dur, y",
     "table": "columns (list, required), rows (list of lists, required), tag, "
              "widths (list of numbers; only widths[0] is read, as the flex weight of the "
@@ -556,7 +713,10 @@ CARD_FIELDS = {
     "list": "items (list of strings, required, supports **accent**), title, stagger, y",
     "compare": "left and right ({label,value,note}, both required), title (supports **accent**), y",
     "quote": "text (required, supports **accent**), attr, size, y",
-    "endcard": "title, sub, pill, foot. Takes no 'out', it runs to the end of the composition",
+    "image": "src (required, a path relative to the project dir; copy the file in "
+             "before rendering), label, width, x, y",
+    "endcard": "title, sub, pill, foot. Takes no 'out', it runs to the end of the composition. "
+               "Not for social cuts: rendered only by reel-compose.py --cut --endcard",
 }
 
 
@@ -564,9 +724,11 @@ def render_card(i, c):
     t = c.get("type")
     if t not in REGISTRY:
         raise SystemExit(f"unknown card type '{t}'. Available: {', '.join(sorted(REGISTRY))}")
-    for req in ("at",):
-        if req not in c:
-            raise SystemExit(f"card {i} ({t}) is missing required field '{req}'")
+    if t == "hook":
+        c = dict(c)
+        c["at"] = 0
+    elif "at" not in c:
+        raise SystemExit(f"card {i} ({t}) is missing required field 'at'")
     if t != "endcard" and "out" not in c:
         raise SystemExit(f"card {i} ({t}) needs an 'out' time (endcard is the only card that may run to the end)")
     return REGISTRY[t](i, normalise_card(i, c))
@@ -586,7 +748,8 @@ def _cli():
     ap.add_argument("--list", action="store_true",
                     help="print every card type with its accepted fields (this is the default)")
     ap.parse_args()
-    print("Card types. Every card takes 'at' (seconds); every card except endcard also takes 'out'.\n")
+    print("Card types. Every card except hook takes 'at' (seconds); every card except endcard "
+          "also takes 'out'.\n")
     for name in sorted(CARD_FIELDS):
         print(f"  {name:<9} {CARD_FIELDS[name]}")
     print("\nAccent colour, ink and muted grey are the ACCENT / INK / MUTED constants in this file.")
