@@ -2,7 +2,7 @@
 
 **A DATT AI Campus release. Built by Tom Lyons. https://www.skool.com/datt-ai-campus**
 
-Reel Factory is a Claude Code skill that takes one raw talking-head recording and produces the finished vertical cuts you would otherwise spend an evening assembling: burned-in captions timed to the words that were actually spoken, motion-graphic cards carrying the numbers the video is arguing about, a separate platform-neutral cut that ends before any platform-specific call to action, a YouTube thumbnail, an Instagram cover frame with the hook on it, and per-platform copy that is scored against a hard threshold and rewritten for up to five rounds. Between each of those stages sits a gate that either passes or stops the run, including one that re-transcribes the rendered file to prove the neutral cut does not still say "comment TEARDOWN".
+Reel Factory is a Claude Code skill that takes one raw talking-head recording and produces the finished vertical cuts you would otherwise spend an evening assembling: a hook card that is fully opaque on the first frame, burned-in captions timed to the words that were actually spoken, motion-graphic cards carrying the numbers the video is arguing about, a separate platform-neutral cut that ends before any platform-specific call to action, a YouTube thumbnail, an Instagram cover frame with the hook on it, and per-platform copy that is scored against a hard threshold and rewritten for up to five rounds. Between each of those stages sits a gate that either passes or stops the run, including one that re-transcribes the rendered file to prove the neutral cut does not still say "comment TEARDOWN".
 
 The skill ends at finished files on disk. Nothing in it can post on your behalf, because nothing in it can post at all.
 
@@ -16,10 +16,12 @@ For a single recording, the pipeline produces:
 | `prep.json` | word-level transcript, caption lines clamped to end just before the next one starts, silent gaps, cut plan |
 | `transcript.json`, `words.json` | raw Whisper output and a flat word list with timings |
 | `audio.wav` | a 16 kHz mono copy of the source audio, the wav Whisper was handed, left on disk so you can hear what the model heard. It is a by-product rather than a cache, rewritten on every run, and it is a verbatim copy of what was said, so delete it when you are done |
-| `<project>/index.html` | the Hyperframes composition: captions plus your motion-graphic cards, animated with GSAP |
+| `prep_trim.json`, `cards_trim.json`, `trimmed.mov` | only when you cut filler: the prep and cards remapped to the trimmed timeline, and the trimmed source built from the command `reel-trim.py` prints |
+| `<project>/index.html` | the Hyperframes composition: the frame-0 hook, captions and your motion-graphic cards, animated with GSAP |
+| `preview/preview-<t>s.png`, `preview-sheet.png` | the composition on top of the real footage at the times you chose, before anything renders. `preview-0s.png` is what the frame-0 reviewer grades |
 | `renders/overlay.mov` | the transparent overlay, rendered at 1080x1920 |
-| `<name>.mp4` | the full cut, footage plus overlay, audio cleaned and loudness normalised to -14 LUFS |
-| `<name>-neutral.mp4` | the same video cut before the platform-specific call to action, closing on an end card |
+| `<name>.mp4` | the full cut, footage plus overlay, audio cleaned, loudness normalised to -14 LUFS and encoded as 48 kHz stereo AAC, with an optional sound on each card entrance |
+| `<name>-neutral.mp4` | the same video cut before the platform-specific call to action, ending at the cut on live footage so it loops |
 | verify report | pass or fail on each gate, per cut, as text or JSON |
 | `thumbnail.jpg` | 1280x720 YouTube thumbnail built from a frame of the finished cut, with hook text |
 | `cover-instagram.jpg` | 1080x1920 Instagram cover with the hook inside the grid-safe band |
@@ -30,13 +32,13 @@ For a single recording, the pipeline produces:
 
 Someone has to record the video. The skill does no generation, no voice cloning and no avatar work. It starts from a file you made.
 
-Someone has to approve the result. The last phase is a hard stop where you read the captions, look at the thumbnail and the grid crop, and check that every claim on a card traces to a real source. Whisper mishears names and technical terms constantly, and those mistakes end up on screen in your voice with your face under them.
+Someone has to approve the result. The last phase is a hard stop where you watch the cut for repetition, read the captions, look at the thumbnail and the grid crop, and check that every claim on a card traces to a real source. Whisper mishears names and technical terms constantly, and those mistakes end up on screen in your voice with your face under them.
 
 You supply the card data. The numbers on the motion graphics cannot come from the footage, they come from whatever analysis or dataset sits behind the video, so you hand them over and the skill builds the cards.
 
-Wall clock for a 60 second recording, once everything is installed: transcription runs for a couple of minutes on CPU, the overlay render takes roughly a minute per 20 seconds of output, and the verify step re-transcribes the finished cut. Most of the remaining time is you looking at snapshots and candidate frames, which is the part the pipeline is deliberately built around rather than trying to automate.
+Wall clock for a 60 second recording, once everything is installed: transcription runs for a couple of minutes on CPU, a preview frame takes a few seconds, the overlay render takes roughly a minute per 20 seconds of output, and the verify step re-transcribes the finished cut. Most of the remaining time is you looking at previews and candidate frames, which is the part the pipeline is deliberately built around rather than trying to automate.
 
-Cost: nothing in the documented path bills per run. Whisper, ffmpeg, the Hyperframes render and the Playwright screenshot all execute on your own machine. Three things to know before you assume the whole thing is self-contained. `hyperframes snapshot` sends frames to Gemini for vision analysis whenever `GEMINI_API_KEY` or `GOOGLE_API_KEY` is set in your environment, which is a paid API call, so the skill always passes `--describe false` to keep it local. The `hyperframes` CLI is a third-party package from HeyGen with its own telemetry setting and its own remote `publish`, `cloud` and `lambda` subcommands, none of which this skill calls; INSTALL.md step 7 tells you how to read and change the telemetry setting. And the project config `reel-compose.py` writes carries three keys beyond the dimensions and duration: a `paths` block, a `$schema` URL, and a `registry` URL pointing at a branch of HeyGen's GitHub repository, so the CLI can reach out to that registry when a composition asks for a block from it. The compositions this skill generates do not use registry blocks.
+Cost: nothing in the documented path bills per run. Whisper, ffmpeg, the Hyperframes render and the Playwright screenshots all execute on your own machine. Three things to know before you assume the whole thing is self-contained. `hyperframes snapshot` sends frames to Gemini for vision analysis whenever `GEMINI_API_KEY` or `GOOGLE_API_KEY` is set in your environment, which is a paid API call, so the skill always passes `--describe false` to keep it local. The `hyperframes` CLI is a third-party package from HeyGen with its own telemetry setting and its own remote `publish`, `cloud` and `lambda` subcommands, none of which this skill calls; INSTALL.md step 7 tells you how to read and change the telemetry setting. And the project config `reel-compose.py` writes carries three keys beyond the dimensions and duration: a `paths` block, a `$schema` URL, and a `registry` URL pointing at a branch of HeyGen's GitHub repository, so the CLI can reach out to that registry when a composition asks for a block from it. The compositions this skill generates do not use registry blocks.
 
 On licences: `hyperframes` version 0.7.92, the version INSTALL.md pins, declares `"license": "Apache-2.0"` in its `package.json`. That was also true of the 0.7.66 and 0.7.107 copies checked alongside it. Older 0.6.x releases declared no licence field at all. Check the version you actually install rather than taking this README's word for it: `npx hyperframes@0.7.92 --version`, then read the `license` field of the copy npm put in your cache.
 
@@ -63,7 +65,10 @@ CARDS=$PWD/cards.json  # you write this one by hand in step 2
 python3 $SKILL/scripts/reel-prep.py "$RAW" --keywords TEARDOWN
 less "$PREP/REPORT.md"           # read this before anything else
 
-# 2. cards: write cards.json by hand, using $SKILL/examples/cards.example.json as the shape
+# 2. cards: write cards.json by hand, using $SKILL/examples/cards.example.json as the shape.
+#    It must hold exactly one hook card, which is pinned to frame 0.
+#    If the take repeats itself, run reel-trim.py here (SKILL.md Phase 2.5) and use
+#    its trimmed prep, cards and source from this point on.
 
 # 3. compose both variants from the one cards.json
 python3 $SKILL/scripts/reel-compose.py --prep "$PREP/prep.json" --cards "$CARDS" \
@@ -71,10 +76,11 @@ python3 $SKILL/scripts/reel-compose.py --prep "$PREP/prep.json" --cards "$CARDS"
 python3 $SKILL/scripts/reel-compose.py --prep "$PREP/prep.json" --cards "$CARDS" \
   --project $WS/video-projects/drop-neutral --cut 62.7 --gsap $WS/vendor/gsap.min.js
 
-# 4. look before you render
+# 4. look before you render: lint, then preview on the real footage
 cd $WS
 npx hyperframes@0.7.92 lint video-projects/drop
-npx hyperframes@0.7.92 snapshot video-projects/drop --at 3,12,24,40 --describe false
+python3 $SKILL/scripts/reel-preview.py --project $WS/video-projects/drop \
+  --source "$RAW" --at 0,4,12,24,40 --outdir "$WS/preview"
 
 # 5. render the transparent overlay (absolute output path)
 npx hyperframes@0.7.92 render video-projects/drop --format=mov --fps=30 --quality=high \
@@ -92,21 +98,26 @@ ffmpeg -y -i "$RAW" -i "$WS/video-projects/drop/renders/overlay.mov" -filter_com
   [0:a]highpass=f=90,afftdn=nr=10,acompressor=threshold=-18dB:ratio=3:attack=8:release=180,\
   loudnorm=I=-14:TP=-1.5:LRA=11[a]" \
  -map "[v]" -map "[a]" -c:v libx264 -preset medium -crf 19 -pix_fmt yuv420p -r 30 \
- -c:a aac -b:a 192k -movflags +faststart drop.mp4
+ -c:a aac -ar 48000 -ac 2 -b:a 192k -movflags +faststart drop.mp4
 
 # For the neutral cut, repeat steps 4 and 5 against video-projects/drop-neutral,
 # then run the command reel-compose.py --cut printed. It is this same recipe plus
-# the trim and the end card tail, with the flip already resolved from the prep
+# the trim and a short audio fade, with the flip already resolved from the prep
 # report. Substitute three things into it: SRC becomes "$RAW", overlay.mov becomes
 # "$WS/video-projects/drop-neutral/renders/overlay.mov", and OUT-neutral.mp4
 # becomes drop-neutral.mp4 so step 7 finds it. If REPORT.md found no speech that
 # locks the video to one platform, there is no neutral cut to build: skip the
 # second compose in step 3 and verify the one file you have.
 
+# Optional: a sound on every card entrance, from an effect you have the rights to.
+# Write to a new name, then use that file in step 7.
+#   python3 $SKILL/scripts/reel-sfx.py --video drop.mp4 --cards "$CARDS" \
+#     --sfx whoosh.wav --out drop-sfx.mp4
+
 # 7. verify the rendered files
 python3 $SKILL/scripts/reel-verify.py drop.mp4 --profile instagram --keywords TEARDOWN
 python3 $SKILL/scripts/reel-verify.py drop-neutral.mp4 --profile neutral \
-  --keywords TEARDOWN --expect-duration 67.0
+  --keywords TEARDOWN --expect-duration 62.7
 ```
 
 In practice you do not type most of this. You hand Claude Code the recording and the card data and say "make a reel from this recording", and the skill walks the chain and stops at each gate. The commands above are what it runs, and what to fall back to when you want to redo one stage by hand.
@@ -123,24 +134,31 @@ In practice you do not type most of this. You hand Claude Code the recording and
        |--- GATE A ---> low cut confidence, mirror unknown, or under 40 words
        |                 -> stop and ask the owner
        v
-  [2] CARDS           you supply the data, the skill builds stat / table / bars /
-       |              list / compare / quote / endcard graphics into cards.json
+  [2] CARDS           you supply the data, the skill builds a frame-0 hook plus
+       |              stat / table / bars / list / compare / quote / image
+       |              graphics into cards.json
        |
-       |--- GATE B ---> every number sourced, no overlaps, chart labels match data
+       |--- GATE B ---> captions proofread, every number sourced, no overlaps,
+       |                 chart labels match data, exactly one hook
+       v
+  [2.5] TRIM          optional: cut repeats, remapping source, captions, cards
+       |              and the cut point together
+       |--- GATE C ---> re-transcribe the trimmed audio against the captions
        v
   [3] COMPOSE         html + gsap composition, duration owned in one place
-       |              lint (0 errors) -> snapshot -> LOOK AT THE CONTACT SHEET
-       |              -> render overlay.mov -> composite with ffmpeg
+       |              lint (0 errors) -> PREVIEW ON THE REAL FOOTAGE
+       |              -> frame-0 judge -> render overlay.mov -> composite
+       |              -> optional card sound
        v
-  [4] VERIFY          file valid, 9:16, duration matches spec, no blank frames,
-       |              NO CTA LEAK (re-transcribes the render)
+  [4] VERIFY          file valid, 48 kHz stereo audio, 9:16, duration matches
+       |              spec, no blank frames, NO CTA LEAK (re-transcribes the render)
        |
        |--- any FAIL is a hard stop, fix and re-render
        v
   [5] THUMBNAIL       frame candidates from the finished cut, hook text,
        |              1280x720 thumbnail, 1080x1920 cover, 4:5 grid-crop check
        v
-  [6] COPY            per-platform captions, scored by three reviewers on five
+  [6] COPY            per-platform captions, scored by four reviewers on six
        |              dimensions, gated at 90, up to 5 rewrite rounds
        v
   [7] APPROVAL        the owner reads the captions, looks at the thumbnail and the
@@ -151,7 +169,7 @@ In practice you do not type most of this. You hand Claude Code the recording and
 
 ## Prerequisites
 
-Claude Code, python3, Node.js 18 or newer, ffmpeg and ffprobe, the OpenAI Whisper Python package, the `hyperframes` npm package run through npx, a vendored copy of GSAP, Playwright for the thumbnail step, and optionally tesseract for the mirrored-source check. Step by step setup with a verification command for each is in [INSTALL.md](INSTALL.md).
+Claude Code, python3, Node.js 18 or newer, ffmpeg and ffprobe, the OpenAI Whisper Python package, the `hyperframes` npm package run through npx, a vendored copy of GSAP, Playwright for the preview and thumbnail steps, optionally tesseract for the mirrored-source check, and optionally a short sound effect of your own for the card sound. Step by step setup with a verification command for each is in [INSTALL.md](INSTALL.md).
 
 ## Package layout
 
@@ -167,8 +185,13 @@ video-reel-factory/    the skill itself, this is the folder you copy
     reel_markers.py      the one list of platform-locking phrases, shared by prep and verify
     reel_cards.py        the motion-graphics card library
     reel-compose.py      assemble the composition from prep.json + cards.json
+    reel-trim.py         cut filler, keeping source, captions, cards and cut point in step
+    reel-preview.py      the composition on the real footage at chosen times, before rendering
+    reel-sfx.py          optional sound on every card entrance, timed from cards.json
     reel-verify.py       deterministic gates on the rendered file
     reel-keywords.mjs    optional rotating CTA keyword picker
+  references/
+    hook-library.md      openers and rules for the frame-0 hook
   assets/
     reel-thumbnail-template.html
     reel-cover-template.html
@@ -187,9 +210,11 @@ Business plumbing. Logging to a private database, a local review console, email 
 
 Identity. Handles, brand names, team names, channel names, and hardcoded paths into one person's repository. The comment-to-DM setup block that `reel-keywords.mjs --setup` prints was rewritten to name no particular vendor; it now says "ManyChat or similar" and describes the trigger rather than one product's menus. The skill refers to "the owner", meaning whoever the video belongs to.
 
-Private performance data. The private version read a file of hook patterns that regenerates daily from one account's real metrics, and consulted a log of that account's social experiments. Those numbers describe one audience. The scoring loop is still here, and if you keep your own record of what works, the skill will read it.
+Private performance data. The private version read a file of hook patterns that regenerates daily from one account's real metrics, and consulted a log of that account's social experiments. Those numbers describe one audience. The scoring loop is still here, the hook library keeps the general patterns without the numbers, and if you keep your own record of what works, the skill will read it.
 
-What stayed is the part that was worth giving away: the order of operations, the named gates, and the reasons each gate exists. Cards get fact-checked before they are composed because a chart that contradicts its own label is worse than no chart. You look at a contact sheet before rendering because a snapshot costs seconds and a render costs minutes. The rendered file gets verified rather than trusted because an ffmpeg filter can silently no-op. The copy gets scored against a hard threshold because "good enough" drifts downward when nobody is measuring. And a person approves the whole drop, because the machine gates check the file and the reviewers check the copy, and neither of them can tell you the video is right.
+Personal styles and media. The private version has extra card styles, fonts and templates built around one person's brand and show, and a stock sound effect for the card sound. None of it ships. The card sound script is here, and it uses an effect you supply, since the private one is a generated clip with no licence that clearly allows redistributing it.
+
+What stayed is the part that was worth giving away: the order of operations, the named gates, and the reasons each gate exists. Cards get fact-checked before they are composed because a chart that contradicts its own label is worse than no chart. You look at a preview on the real footage before rendering because a preview costs seconds and a render costs minutes. The rendered file gets verified rather than trusted because an ffmpeg filter can silently no-op. The copy gets scored against a hard threshold because "good enough" drifts downward when nobody is measuring. And a person approves the whole drop, because the machine gates check the file and the reviewers check the copy, and neither of them can tell you the video is right.
 
 ## License
 

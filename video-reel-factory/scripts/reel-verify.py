@@ -17,7 +17,7 @@ Requires:
   ffmpeg and ffprobe on PATH
 
 Example:
-  python3 reel-verify.py rendered.mp4 --profile neutral --expect-duration 67.0
+  python3 reel-verify.py rendered.mp4 --profile neutral --expect-duration 62.7
   python3 reel-verify.py rendered.mp4 --profile neutral --keywords TEARDOWN
   python3 reel-verify.py rendered.mp4 --profile instagram --keywords TEARDOWN
   python3 reel-verify.py rendered.mp4 --profile neutral --json
@@ -75,6 +75,7 @@ def probe(p):
         # Not a hard exit: an unreadable file is exactly what FILE_VALID is for,
         # so report it through the gates and keep the exit code meaningful.
         return {"duration": 0.0, "w": None, "h": None, "fps": 0, "has_audio": False,
+                "sample_rate": 0, "channels": 0,
                 "size_mb": 0.0, "ffprobe_error": (r.stderr.strip() or "ffprobe produced no output")}
     d = json.loads(r.stdout)
     v = next((s for s in d.get("streams", []) if s.get("codec_type") == "video"), {})
@@ -82,7 +83,16 @@ def probe(p):
     return {"duration": float(d.get("format", {}).get("duration", 0)),
             "w": v.get("width"), "h": v.get("height"),
             "fps": _fps(v.get("r_frame_rate")) if v.get("r_frame_rate") else 0,
-            "has_audio": bool(a), "size_mb": round(int(d.get("format", {}).get("size", 0)) / 1048576, 1)}
+            "has_audio": bool(a),
+            "sample_rate": _int(a.get("sample_rate")), "channels": _int(a.get("channels")),
+            "size_mb": round(int(d.get("format", {}).get("size", 0)) / 1048576, 1)}
+
+
+def _int(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return 0
 
 
 # A frame is flat when its brightest and darkest pixels are the same, whatever
@@ -270,11 +280,11 @@ def transcribe(path, model="small", expect_dur=None, tolerance=0.6):
 def build_parser():
     ap = argparse.ArgumentParser(
         prog="reel-verify.py",
-        description="Measure a rendered reel against deterministic gates: valid file, 9:16 "
-                    "aspect, duration, no blank frames, and no platform-specific speech left "
+        description="Measure a rendered reel against deterministic gates: valid file, playable "
+                    "48/44.1 kHz stereo audio, 9:16 aspect, duration, no blank frames, and no platform-specific speech left "
                     "in a neutral cut. Exits non-zero if any gate fails.",
         epilog="example:\n"
-               "  python3 reel-verify.py neutral.mp4 --profile neutral --expect-duration 67.0\n"
+               "  python3 reel-verify.py neutral.mp4 --profile neutral --expect-duration 62.7\n"
                "  python3 reel-verify.py full.mp4 --profile instagram --keywords TEARDOWN\n\n"
                "needs ffmpeg and ffprobe on PATH, plus the openai-whisper package.",
         formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -357,6 +367,8 @@ def main():
     # normal table, so --json still emits something parseable, and stop before the
     # later gates try to sample frames or transcribe a file ffprobe could not open.
     if info.get("ffprobe_error"):
+        gate("AUDIO_RATE_PLAYABLE", False, "not checked, the file could not be read")
+        gate("AUDIO_STEREO", False, "not checked, the file could not be read")
         gate("VERTICAL_9x16", False, "not checked, the file could not be read")
         if a.expect_duration is not None:
             gate("DURATION_MATCHES_SPEC", False, "not checked, the file could not be read")
@@ -364,6 +376,17 @@ def main():
         gate("NO_CTA_LEAK" if a.profile == "neutral" else "CTA_PRESENT", False,
              "not checked, the file could not be read")
         report_and_exit()
+
+    # "Has an audio stream" is not the check, the sample rate is. loudnorm
+    # resamples to 192 kHz internally and AAC then writes 96 kHz unless the
+    # encode says -ar 48000, and QuickTime and iPhone play 96 kHz AAC as silence.
+    gate("AUDIO_RATE_PLAYABLE", info["sample_rate"] in (44100, 48000),
+         f"{info['sample_rate'] or 'no'} Hz (want 48000 or 44100; 96000 plays silent in "
+         "QuickTime and on iPhone, add -ar 48000)")
+    # Stereo plays everywhere. A 1-channel track is routed to a centre speaker on
+    # some multi-channel playback devices and plays silent there.
+    gate("AUDIO_STEREO", info["channels"] == 2,
+         f"{info['channels']} channel(s) (want 2, add -ac 2)")
 
     gate("VERTICAL_9x16", info["h"] and info["w"] and abs((info["w"] / info["h"]) - 9 / 16) < 0.02,
          f"aspect {round(info['w']/info['h'],4) if (info['h'] and info['w']) else '?'} (want 0.5625)")
