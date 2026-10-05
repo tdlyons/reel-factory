@@ -6,6 +6,22 @@ Reel Factory is a Claude Code skill that takes one raw talking-head recording an
 
 The skill ends at finished files on disk. Nothing in it can post on your behalf, because nothing in it can post at all.
 
+## First, three questions
+
+Before it touches the recording, the skill asks you three things, and everything after depends on the answers.
+
+1. **What kind of video is this, and who is it for?** The subject type.
+2. **Which card style?** The look of the motion graphics. See [Styles](#styles).
+3. **Which caption style?** Phrase, pulse or cinematic. See [Caption styles](#caption-styles).
+
+| subject | what it is | what changes |
+|---|---|---|
+| Tool | one thing that already shipped, shown on screen, usable today | the hook says what it does and what it costs; the cut is checked for the steps on screen and an honest limitation; the reviewers score whether your viewer can actually reach it today, already has the problem, can see it work in under a minute, and hears what it does badly |
+| News | something real just happened, and why it matters to your viewer | the hook carries the outcome with its number; the cut is checked for the concrete case and the complicating fact; the reviewers score whether your viewer already cares, whether it bridges to their work, whether the claim fits in one sentence, whether it is fresh, and whether every number is sourced |
+| Other | anything else | you describe it, and the skill uses the closer template or a type you add yourself |
+
+Both types follow the same six beats: DECLARE (the claim, inside the first three seconds), ASSESS (who it touches), ISOLATE (the one exact thing), PROCESS (shown on screen), BUILD (the limitation or the complicating fact) and REVEAL (one action, over live footage). The skill starts from a finished recording, so use the beats to plan and record, and the skill uses them to check the cut, suggest cards for each beat, and write and score the copy. SKILL.md has the full beat table, both rubrics, and a short section on adding your own subject type.
+
 ## What you get out of it
 
 For a single recording, the pipeline produces:
@@ -52,9 +68,17 @@ Then start a new Claude Code session. Full prerequisites and a check for each on
 
 ## Quickstart
 
+The first thing you tell your AI assistant is the three answers, along with the file:
+
+> Make a reel from raw.mp4. It is a Tool video for small shop owners who feel behind on AI. Panel style, phrase captions. The card numbers are in results.csv.
+
+If you leave any of the three out, the skill asks before it starts. The commands below are what it runs, for when you want to run a stage yourself.
+
 ```bash
 SKILL=~/.claude/skills/video-reel-factory
 WS=~/my-reels          # a working directory of your own, see INSTALL.md step 7
+STYLE=clean            # card style: clean, panel, example-brand, or your own (--list-styles)
+CAPS=phrase            # caption style: phrase, pulse, or none for pre-captioned footage
 
 # Absolute, because step 4 changes directory and these are referenced after it.
 RAW=$PWD/raw.mp4       # your recording, sitting in the directory you are standing in
@@ -72,9 +96,10 @@ less "$PREP/REPORT.md"           # read this before anything else
 
 # 3. compose both variants from the one cards.json
 python3 $SKILL/scripts/reel-compose.py --prep "$PREP/prep.json" --cards "$CARDS" \
-  --project $WS/video-projects/drop --gsap $WS/vendor/gsap.min.js
+  --project $WS/video-projects/drop --style $STYLE --captions $CAPS --gsap $WS/vendor/gsap.min.js
 python3 $SKILL/scripts/reel-compose.py --prep "$PREP/prep.json" --cards "$CARDS" \
-  --project $WS/video-projects/drop-neutral --cut 62.7 --gsap $WS/vendor/gsap.min.js
+  --project $WS/video-projects/drop-neutral --cut 62.7 --style $STYLE --captions $CAPS \
+  --gsap $WS/vendor/gsap.min.js
 
 # 4. look before you render: lint, then preview on the real footage
 cd $WS
@@ -128,6 +153,9 @@ In practice you do not type most of this. You hand Claude Code the recording and
   raw recording
        |
        v
+  [0] GATE 0          subject type and viewer, card style, caption style
+       |
+       v
   [1] PREP            whisper transcript, caption lines, silent gaps,
        |              platform-marker scan, neutral cut point, mirror check
        |
@@ -167,6 +195,58 @@ In practice you do not type most of this. You hand Claude Code the recording and
   finished files on disk. you post them.
 ```
 
+## Styles
+
+### What a style is
+
+A style is one Python module in the skill's `scripts/` folder that decides how the cards look and move. It defines the page CSS, the HTML for each card type, and the GSAP animation for each, through four names the composer calls: `base_css()`, `captions(lines)`, `render_card(i, card)` and `REGISTRY`. Every style supports the same card types with the same fields, and every card is validated by the same shared code before a style draws it, so one `cards.json` renders in any style. You pick one with `--style`, and `reel-compose.py --list-styles` lists what is installed.
+
+| style | what it looks like | use it when |
+|---|---|---|
+| `clean` (default) | white rounded cards with a soft shadow, one blue accent, the system font, a gentle rise-in | you want the graphics to read as calm and neutral, or the footage is busy and needs light cards to sit on it |
+| `panel` | dark translucent glass panels with a rounded accent spine down the left edge, condensed capitals for headlines, monospaced labels, a slide-in from the left while the spine wipes down | you want a technical, high-contrast look, or the footage is bright and white cards would disappear into it |
+| `example-brand` | `panel` with a violet palette and white text on the accent | you want your own colours: copy this file |
+
+The cover and thumbnail templates in `assets/` take the same colours through four variables at the top of each file, with the values for each shipped style listed in a comment beside them.
+
+### Make your own, easiest first
+
+**1. Recolour.** Copy `scripts/reel_cards_example_brand.py` to `scripts/reel_cards_yourname.py`. Change the hex values in its `COLOURS` block: the accent, a lighter tint of it, a neutral second colour, the reference-line colour, the panel glass, the solid surface, and the colour of text that sits on the accent (white on a dark accent, near-black on a light one). Compose with `--style yourname`. There is nothing to register: any file named `reel_cards_<name>.py` in that folder is a style called `<name>`, with underscores read as dashes. Running the file directly prints `ok` for every colour it applied. Copy the same values into the cover and thumbnail templates.
+
+**2. A new look.** Copy `reel_cards_panel.py` (dark) or `reel_cards.py` (light) to a new `reel_cards_<name>.py`. Keep the four interface names and every card type, then change the shapes, the type, the spacing and the motion. Keep colours in CSS variables, the way `panel` does, so a recolour of your new style is a ten line file. Compose the shipped `examples/cards.example.json` with it, lint it, and preview it on real footage before you use it on a real drop.
+
+**3. Advanced extras.** Two things the private version has that do not ship here, described so your assistant can build them.
+
+A screen-share panel is a composition that shows a screen recording inside a framed panel in the upper part of the frame, with the speaker still visible underneath, so a tutorial can show the screen and the face at once. The recording plays as its own layer at the bottom of the composition, the frame is drawn above it in the style's colours, and the cards and captions sit on top. The panel grows open at a set time and closes at another, and any card that would collide with it is hidden while it is up.
+
+Explainer scenes are full-frame animated scenes that replace the talking head for a few seconds at the key beats, acting the idea out (two things racing, a meter filling, a door unlocking) rather than restating it as text. A recurring mascot character appears in every scene to point at the problem and react to the answer, and the speaker stays on screen in a small round face bubble in a corner, cut out of the original footage during the composite step. Between scenes the video returns to the normal talking head with cards. Each scene is hand-authored HTML, CSS and GSAP that follows the same render contract as the cards.
+
+### Rules every style keeps
+
+- The `hook` card is fully opaque on frame 0, with no entrance animation. It may only animate out.
+- Text stays inside the Instagram content box, x 65 to 950 and y 269 to 1560. The hook is the one exception, allowed to sit at the top for the few seconds it is on screen.
+- The caption band stays clear: every card ends at least 20px above it, and a caption is readable against whatever is behind it. The shipped styles size their lower cards to end by y=1420 above the band at y=1440, and the composer warns when a card's content grows it into the band.
+- No card or caption covers the face, the mouth, the hands, or anything the speaker is showing. Check it on the preview of the real footage, card by card.
+- State changes are paired `gsap.set()` and `tl.to()` calls, never `tl.call()`, with no `backdrop-filter` and nothing that reads the clock or a random number, so every frame renders the same however the renderer seeks.
+
+### Have your assistant build one
+
+Hand this README to your AI assistant along with your brand colours (and a screenshot of your brand if you have one), and ask it to make a style from them. Ask for a recolour first. It is the quickest to check, and you can move to a new look once the colours are right.
+
+### Caption styles
+
+| captions | what it looks like | how |
+|---|---|---|
+| Phrase (default) | a short line at a time near the bottom, with the spoken word highlighted in the style's accent | `--captions phrase` |
+| Pulse | one word at a time in heavy white capitals with a black outline, centre frame, swapping hard with no fade | `--captions pulse` |
+| Cinematic | phrase captions with one oversized hero word per sentence, placed in the empty space around the speaker, with the hero word partly behind them | built with a separate tool, below |
+
+Pulse is fast and loud. Its words never overlap in time, because the composer forces word times into order and refuses to build if two would show at once. It sits across the lower card band, so give lower cards a `y` below the word, or move the captions while those cards are up, and check the preview.
+
+Cinematic captions need a matte of the person so the hero word can sit behind them, so this skill does not draw them. Build them with the free Hyperframes `embedded-captions` skill: install it with `npx hyperframes skills update embedded-captions`, pick a column-flow identity such as `cream` or `editorial`, run its prepare script to build the matte and the safe zones, write the caption file (one hero word per sentence, chosen because it is a number, a place, a result or the stressed word, with filler dropped and one special treatment saved for the two or three biggest moments), preview, and render. Then use that rendered file as the source footage for the rest of this pipeline and compose with `--captions none`, so the normal caption layer is off while the hook and cards are still drawn.
+
+Never mix two caption styles in one video. Whatever the style, the safe zone, the opaque hook on frame 0, and the caption proof read all still apply.
+
 ## Prerequisites
 
 Claude Code, python3, Node.js 18 or newer, ffmpeg and ffprobe, the OpenAI Whisper Python package, the `hyperframes` npm package run through npx, a vendored copy of GSAP, Playwright for the preview and thumbnail steps, optionally tesseract for the mirrored-source check, and optionally a short sound effect of your own for the card sound. Step by step setup with a verification command for each is in [INSTALL.md](INSTALL.md).
@@ -183,7 +263,9 @@ video-reel-factory/    the skill itself, this is the folder you copy
   scripts/
     reel-prep.py         transcribe, plan cuts, detect platform-locking speech
     reel_markers.py      the one list of platform-locking phrases, shared by prep and verify
-    reel_cards.py        the motion-graphics card library
+    reel_cards.py        the `clean` card style, plus the validation and pulse captions every style shares
+    reel_cards_panel.py  the `panel` card style
+    reel_cards_example_brand.py   `panel` recoloured, the file to copy for your own colours
     reel-compose.py      assemble the composition from prep.json + cards.json
     reel-trim.py         cut filler, keeping source, captions, cards and cut point in step
     reel-preview.py      the composition on the real footage at chosen times, before rendering
@@ -212,7 +294,7 @@ Identity. Handles, brand names, team names, channel names, and hardcoded paths i
 
 Private performance data. The private version read a file of hook patterns that regenerates daily from one account's real metrics, and consulted a log of that account's social experiments. Those numbers describe one audience. The scoring loop is still here, the hook library keeps the general patterns without the numbers, and if you keep your own record of what works, the skill will read it.
 
-Personal styles and media. The private version has extra card styles, fonts and templates built around one person's brand and show, and a stock sound effect for the card sound. None of it ships. The card sound script is here, and it uses an effect you supply, since the private one is a generated clip with no licence that clearly allows redistributing it.
+Personal styles and media. The private version has card styles, fonts and templates built around one person's brand and show, a screen-share panel, an explainer scene kit with a mascot, and a stock sound effect for the card sound. None of that ships. The `panel` style here is a generic rebuild of one of those looks on system fonts with a neutral palette, and the screen-share panel and explainer scenes are described under [Styles](#styles) for you to build yourself. The card sound script is here, and it uses an effect you supply, since the private one is a generated clip with no licence that clearly allows redistributing it.
 
 What stayed is the part that was worth giving away: the order of operations, the named gates, and the reasons each gate exists. Cards get fact-checked before they are composed because a chart that contradicts its own label is worse than no chart. You look at a preview on the real footage before rendering because a preview costs seconds and a render costs minutes. The rendered file gets verified rather than trusted because an ffmpeg filter can silently no-op. The copy gets scored against a hard threshold because "good enough" drifts downward when nobody is measuring. And a person approves the whole drop, because the machine gates check the file and the reviewers check the copy, and neither of them can tell you the video is right.
 

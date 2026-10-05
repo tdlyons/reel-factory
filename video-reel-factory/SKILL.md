@@ -16,7 +16,8 @@ Throughout this skill, "ask the owner" means stop and ask the person whose video
 ## The chain
 
 ```
-prep -> cards -> [trim] -> compose -> PREVIEW (+ frame-0 judge) -> render -> composite
+GATE 0 (subject, card style, caption style)
+  -> prep -> cards -> [trim] -> compose -> PREVIEW (+ frame-0 judge) -> render -> composite
      -> [card sound] -> VERIFY -> thumbnail + cover -> copy -> score
      -> OWNER APPROVES (cut, repetition, captions, cards, thumb, cover, copy) -> hand off files
                                        |
@@ -34,6 +35,83 @@ You also need a working directory holding a `video-projects/` folder and a `vend
 ```bash
 WS=~/my-reels     # contains video-projects/ and vendor/gsap.min.js
 ```
+
+---
+
+## Gate 0: ask first
+
+Before prep, before anything else, ask the owner three questions in one message, each with its list of options. Do not infer the answers from context or from the last run. Confirm the answers back in one line, then start Phase 1.
+
+### Question 1: what kind of video is this, and who is it for?
+
+| subject | what it means | copy rubric |
+|---|---|---|
+| **Tool** | One thing that already shipped, shown on screen, usable today. | Rubric T |
+| **News** | Something real just happened, and the video says why it matters to the viewer. | Rubric N |
+| **Other** | Anything else. Ask the owner to describe it, then use the closest of the two templates or define a new type (see "Adding a subject type" below). | the closest rubric, or the new one |
+
+Ask for the viewer in one line as well ("a solo shop owner who feels behind on AI", "first-time home buyers"). Every rubric is scored for that viewer.
+
+The subject type decides four things downstream: the hook pattern (Phase 2), the beat structure the cut is checked against (below), which cards to suggest for each beat (Phase 2), and which subject rubric the reviewers score in Phase 6.
+
+### Question 2: which card style?
+
+Offer every style `python3 $SKILL/scripts/reel-compose.py --list-styles` prints, with its one-line description. The shipped ones are `clean` (the default, light), `panel` (dark glass with an accent spine) and `example-brand` (panel in another palette, a template for the owner's own colours). If the owner has made their own style it shows up in that list too. See "Card styles" in Phase 3.
+
+### Question 3: which caption style?
+
+| captions | what it means |
+|---|---|
+| **Phrase** (default) | A short line at a time near the bottom, with the spoken word highlighted. `--captions phrase` |
+| **Pulse** | One word at a time, all caps, centre frame, hard swap. Fast and loud. `--captions pulse` |
+| **Cinematic** | Phrase captions with one oversized hero word per sentence, placed in the empty space around the speaker and partly behind them. Built outside this skill, then fed back in as the source. See "Cinematic captions" in Phase 3 |
+
+Never mix two caption styles in one video. The two grammars fight.
+
+### The beat structure, by subject
+
+This skill starts from a finished recording, so the owner uses this table to plan and record, and the skill uses it to check the cut, to place cards and to write and score the copy. Both types run the same six beats in the same order.
+
+| beat | Tool | News | rule |
+|---|---|---|---|
+| **DECLARE** | What it does, and what it costs (free, if it is). | The outcome, with the number in it. | Spoken inside the first 3 seconds. No greeting, no setup, no "in this video". |
+| **ASSESS** | Who has this problem. | How big it is, and who it touches. | One or two lines of scope. The story comes after. |
+| **ISOLATE** | The exact tool, and where to find it. | The single concrete case or number. | One thing. Stop being about a category. |
+| **PROCESS** | The steps, on screen. The bulk of the video. | Show the thing happening. | Show it happening on screen. Describing it does not count. |
+| **BUILD** | What it does badly, and what you still fix by hand. | The complicating fact. | Required. See below. |
+| **REVEAL** | Go do it, then sign off. | The payoff, one action, sign off. | One action only, said over live footage so the video loops. |
+
+**BUILD is the beat nobody wants to record, and the one that makes the rest believable.** In a tool video it is the honest limitation; without it the video is an advert. In a news video it is the fact that complicates the headline. If the recording has no BUILD, tell the owner at Phase 7 rather than papering over it in the copy.
+
+**DECLARE in the first 3 seconds is the rule most worth checking on the actual cut.** Most of a vertical audience leaves before a slow opening gets to the point. If the recording's first real claim lands late, say so at Gate A and offer a trim (Phase 2.5) that starts closer to it.
+
+Cards that usually fit each beat: DECLARE is the hook card plus a `stat` if the claim has a number. ISOLATE is an `image` of the tool or the source, or a `quote` of the headline. PROCESS is `image` cards for each step, or a `list` of the steps. BUILD is a `compare` (what it claims against what it does) or a `quote` of the limitation. REVEAL carries the one action on a normal card over live footage.
+
+### Subject rubrics
+
+The Phase 6 reviewers score the matching rubric alongside the copy dimensions, 0 to 100 per item, gated at 90, for the viewer named in Question 1. A failure the copy can fix (the caption hides the limitation, overstates the cost) goes into the rewrite rounds. A failure only a new recording can fix (no BUILD, the tool needs a paid tier the viewer will not have) goes to the owner at Phase 7 with the reviewer's note.
+
+**Rubric T (Tool).** The reviewer checks the tool itself before scoring, and reports anything it could not confirm.
+
+1. **Reachable by this viewer, today.** Name the plan, platform, device and surface it needs. Score 0 if it needs a specific machine, a paid tier the viewer will not have, a developer surface, or a waitlist.
+2. **They already have the problem.** The viewer recognises the problem in one sentence without being taught to care about it.
+3. **Showable in under 60 seconds.** The whole thing can be shown start to finish in one continuous run. A tool that needs an account setup, a data import or days of use before anything visible happens scores low.
+4. **Cost, stated honestly.** Free scores highest and cheap and instantly trialable is fine. Score 0 if it needs a sales call or an annual commitment, or if the copy calls it free when the useful part is paid.
+5. **A real weakness is named.** The video and the copy name something specific it does badly. Score 0 if nothing is named.
+
+Freshness is not an item here. A tool from months ago is new to a viewer who has not heard of it.
+
+**Rubric N (News).**
+
+1. **Already cares.** The viewer would have heard about this, or worry about it, without being told to. Inside-baseball stories score low however significant they are.
+2. **Bridged to their work.** The reviewer drafts a two sentence bridge from the news to something the viewer touches at work. If it cannot be written, score 0, even if the story is actionable.
+3. **Cold legibility.** The claim fits in one sentence with a named actor doing something and a number early in it. A story that takes three sentences to set up is not a lead.
+4. **Fresh.** The specific hook is from this week, checked at the source. An old fact with a new date scores 0.
+5. **Sourced.** Every number in the video and the copy traces to a primary source, the byline has been read, and the publisher is not selling the thing the story praises. One number, one source, never two versions of the same figure.
+
+### Adding a subject type
+
+A subject type is three things written into this file under the two above: a name and a one-line meaning in the Question 1 table, a column in the beat table saying what each of the six beats contains for that type (or a beat list of its own, if the six do not fit), and a rubric of four or five items, each scoreable 0 to 100 with a stated reason for a 0. Then add its card suggestions per beat. A test-and-verdict video, where the verdict is said out loud and shown on a card, or a screen walkthrough, where screenshots carry the video and cards must never cover their text, are the kind of format worth adding this way once you have made a few and know what fails.
 
 ---
 
@@ -74,7 +152,7 @@ The phrases prep scans for live in `scripts/reel_markers.py`, and Phase 4's leak
 
 The card data is never in the footage. It comes from whatever analysis, dataset or argument sits behind the video, so you have to supply it. Watch what the speaker actually claims and build cards that show those claims.
 
-Card types are defined in `scripts/reel_cards.py`:
+Every card style supports the same card types with the same fields, so one `cards.json` renders in any style. `python3 $SKILL/scripts/reel_cards.py --list` prints the fields each type accepts.
 
 | type | use it for |
 |---|---|
@@ -98,6 +176,8 @@ Scan the whole transcript for beats worth showing rather than illustrating the o
 {"type":"hook","out":3.9,"kicker":"I wish I knew this earlier","text":"3 jobs. **0 prompts**."}
 ```
 
+The hook follows the subject type from Gate 0. A Tool hook says what the thing does for the viewer, and that it is free when it is. A News hook carries the outcome with its number in it. Either way it is the DECLARE beat on screen.
+
 Write it against `references/hook-library.md`, not off the top of your head, and reuse the same words on the thumbnail and the cover so the package reads as one thing. If the owner supplied the hook words, use them as given; the reviewers grade how the hook is rendered, not whether to replace it.
 
 **No end card on a social cut.** A full-bleed card at the end of a vertical video stops it dead, and the last frame should be live footage so the video loops back into its own opening. Carry the call to action on a normal card over the talking head instead. An ask for a share or a follow goes second to last, and the ending lands after it. `reel-compose.py` drops `endcard` cards on every run and prints a NOTE saying so. The type stays in the library for work that is not going to a feed, rendered only by `--cut --endcard`.
@@ -112,7 +192,9 @@ Required fields are checked the same way. A `quote` without `text`, a `bars` ser
 
 On a `table`, only `widths[0]` is read, as the flex weight of the label column. Every other column is a fixed `colw` pixels and right aligned, so the rest of the `widths` list is validated and then ignored.
 
-Cards default to one of two vertical bands: `stat`, `quote` and `image` sit at the top of the frame at y=150, and `table`, `bars`, `list` and `compare` sit in the lower third at y=1000. The hook sits at y=132. The caption band starts at y=1440, which puts the text at about 79% of the frame height, above the username and caption text the platforms draw over the bottom of a vertical video. On a 1080x1920 vertical selfie a face can occupy roughly y=280 to y=1200, so the lower band starts inside that range and a tightly framed speaker can end up under a card. That is one of the things the Phase 3 preview is for. Override the vertical position per card with `y` when a card lands on the face.
+Cards default to one of two vertical bands: `stat`, `quote` and `image` sit at the top of the frame at y=150, and `table`, `bars`, `list` and `compare` sit in the lower third at y=1000. The hook sits at y=132. With phrase captions the caption band starts at y=1440, which puts the text at about 79% of the frame height, above the username and caption text the platforms draw over the bottom of a vertical video. On a 1080x1920 vertical selfie a face can occupy roughly y=280 to y=1200, so the lower band starts inside that range and a tightly framed speaker can end up under a card. That is one of the things the Phase 3 preview is for. Override the vertical position per card with `y` when a card lands on the face.
+
+Every card keeps 20px clear of the caption band. At their default sizes the lower-band cards end by y=1420, but a long list, a tall table or a big `bar_height` grows down into the captions. `reel-compose.py` estimates each card's box from its fields and prints a WARN for any card that would cross the band active while it is on screen, including bands moved by `caption_moves` or `--caption-top` and the pulse band. Fix it with a smaller `y`, fewer items, a smaller `height` or `bar_height`, or a caption move, then confirm on the preview. The estimate is an early warning, the preview is the check.
 
 **The Instagram safe zone.** Build to the real Reels interface, not only to the face:
 
@@ -204,6 +286,48 @@ python3 $SKILL/scripts/reel-compose.py --prep <prep.json> --cards cards.json \
 `--fps` defaults to 30, and it only sets the composition's own frame rate. If you change it, change it in `hyperframes render --fps=` as well. The composite command `reel-compose.py` prints already carries whatever you passed; the one written out below is for 30.
 
 `--caption-top` moves the caption band off its default vertical position, which you need when the bottom of the frame is occupied by a reaction overlay or burned-in UI.
+
+`--style` and `--captions` carry the Gate 0 answers. Pass the same two values to both compose commands, so the full and neutral cuts match.
+
+### Card styles
+
+A style is one Python module in `scripts/` that defines the CSS, the card HTML and the motion through a shared interface: `base_css()`, `captions(lines)`, `render_card(i, card)` and `REGISTRY`. The composer validates every card the same way whichever style draws it, so the style only decides how things look and move.
+
+| `--style` | looks like |
+|---|---|
+| `clean` (default) | white rounded cards, one blue accent, system font, a soft rise-in |
+| `panel` | dark glass panels with a rounded accent spine down the left edge, condensed caps for headlines, a slide-in from the left while the spine wipes down |
+| `example-brand` | `panel` in a violet palette. A template for recolouring |
+
+`python3 $SKILL/scripts/reel-compose.py --list-styles` prints what is installed. Any file named `reel_cards_<name>.py` in `scripts/` is a style called `<name>` (underscores read as dashes), with no registration step.
+
+**When the owner wants their own colours**, copy `scripts/reel_cards_example_brand.py` to `scripts/reel_cards_<theirname>.py`, change the hex values in `COLOURS` (accent, a lighter tint of it, a neutral second colour, the reference-line colour, the panel glass, the solid surface, and the text colour that sits on the accent), update `SUMMARY`, and compose with `--style <theirname>`. Check `--on-accent` against the accent: dark text on a light accent, white on a dark one. Run the file directly (`python3 reel_cards_<theirname>.py`) and every colour should print `ok`.
+
+**When they want a different look**, copy `reel_cards_panel.py` (or `reel_cards.py`) to a new `reel_cards_<name>.py`, keep the four interface names and the card types, and change the shapes and the motion. Rules a new style must keep:
+
+- the `hook` card is fully opaque on frame 0 with no entrance animation: an inline `opacity:1`, a `tl.set` at 0, and only an exit tween
+- every card routes through `reel_cards.render_with`, so it is validated like the others
+- colours reach the cards through CSS variables, so a recolour of the new style is a ten line file
+- state changes are paired `gsap.set()` and `tl.to()` calls, never `tl.call()`, no `backdrop-filter`, nothing that reads the clock or a random number
+- the default card positions stay inside the Instagram content box below, and every lower-band card at its default size ends at least 20px above the caption band at y=1440
+- it provides `estimate_box(card)` returning the card's (top, bottom) on the frame, so the composer can warn when a card crosses the caption band. A style without it still works and simply gets no warning
+
+Compose the example `cards.json` with the new style, lint it, and preview it on real footage before using it on a drop.
+
+### Caption styles
+
+`--captions phrase` is the default. `--captions pulse` shows one word at a time in heavy white caps with a black outline, centred at about 59% of the frame height, swapping hard with no fade. Word times are forced in order and clamped so no two words are ever on screen together, and the build refuses if any overlap survives. Pulse sits across the lower card band, so the caption band check warns about every lower card left at its default height: give each a `y` below the word, or move the captions with `caption_moves` while the card is up, and check it on the preview. `caption_moves` and `--caption-top` move pulse captions the same way they move phrase captions.
+
+### Cinematic captions
+
+Cinematic captions are phrase captions with one oversized hero word per sentence, placed in the empty space around the speaker, with the hero word partly behind them. That depth needs a matte of the person, so this skill does not draw them. Build them with the free Hyperframes `embedded-captions` skill, then use its output as the source footage here:
+
+1. Install it with `npx hyperframes skills update embedded-captions` and pick a column-flow identity from its catalogue (`cream` and `editorial` are good starting points).
+2. Proof the captions first (Gate B). Then write a caption plan, one row per sentence: the phrase groups with times, the hero word (a number, a place, a result or the stressed word) and why, its position on screen, and whether it gets the one special treatment (a translucent fill or a brief glow, on two or three moments at most). Drop filler words. Show the owner the plan and wait for a yes.
+3. Run its prepare script, which builds the person matte and the safe zones, author its caption JSON from the plan, preview, and render.
+4. Use the rendered file as the source for Phase 3 onwards, composing with `--captions none` so the normal caption layer is off. Cards and the hook are still drawn by this skill.
+
+The rest still applies: the Instagram safe zone, a fully opaque hook on frame 0, no caption over the face, mouth, hands or anything the speaker is showing, and the Gate B proof read.
 
 Then, for each project:
 
@@ -334,7 +458,7 @@ cp cand_<chosen>.png thumb-bg.jpg      # MUST sit next to thumbnail.html
 
 Yes, that copies a PNG to a `.jpg` name. The extension is cosmetic here: the template references `thumb-bg.jpg` by that exact filename, and Chromium reads the real format from the file's own bytes rather than its name. Keep the name.
 
-Fill the four slots by editing the file: `%%KICKER%%`, `%%HEAD_LINE1%%`, `%%HEAD_HIGHLIGHT%%`, `%%BRAND%%`. The headline is 2 to 5 words that read at phone size. Do not paste the caption hook in and let it wrap.
+Fill the four slots by editing the file: `%%KICKER%%`, `%%HEAD_LINE1%%`, `%%HEAD_HIGHLIGHT%%`, `%%BRAND%%`. The colours and headline font are four variables in the `:root` line at the top of the template, set for `clean`. For any other style, paste in the values the comment above that line lists, so the thumbnail and cover match the cards. Do the same in the cover template. The headline is 2 to 5 words that read at phone size. Do not paste the caption hook in and let it wrap.
 
 ```bash
 node "$SKILL/assets/screenshot-thumb.mjs" "$PWD/thumbnail.html" "$PWD/thumb-2x.png"
@@ -371,7 +495,7 @@ Look at `cover-gridcrop.jpg`. If the hook is cut off, move the text. Do not shri
 
 Write captions per platform. The platform that got the full cut gets the spoken keyword in the caption too. The platforms on the neutral cut point at the first comment instead, since a link in the body suppresses reach on most of them.
 
-Then score the copy before you hand it over. Run four independent reviewers over it, gate every dimension at **90**, and rewrite and rescore for up to **5 rounds**:
+Then score the copy before you hand it over. Score the subject rubric from Gate 0 (Rubric T or Rubric N) alongside the dimensions below, under the same gate and the same rounds. Run four independent reviewers over it, gate every dimension at **90**, and rewrite and rescore for up to **5 rounds**:
 
 | dimension | fails if |
 |---|---|
@@ -415,7 +539,8 @@ Ask for an answer on each of these:
 4. **The cards.** The claims on screen are the ones that get screenshotted and quoted back.
 5. **The thumbnail and the cover.** Frame choice and hook text on both. Send the grid crop alongside the cover. The cover is the last asset anyone remembers to look at and the first one an audience sees.
 6. **The copy.** Paste every platform caption into the message. Do not make someone open a file to find out what they are approving.
-7. **Anything you decided for them.** A flip call, a cut point, a platform you dropped, a scoring dimension that never reached 90.
+7. **The subject rubric.** Any item that failed and that only a new recording could fix, such as a missing BUILD or a DECLARE that lands late.
+8. **Anything you decided for them.** A flip call, a cut point, a platform you dropped, a scoring dimension that never reached 90.
 
 If a caption word is wrong, fix `caption_lines` in `prep.json` and re-render. Do not correct a misheard word in the platform copy only and leave it wrong on screen.
 

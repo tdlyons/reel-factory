@@ -10,9 +10,11 @@ whatever analysis sits behind the video. So the cards themselves have to be
 reusable shells that any video can fill, otherwise every video is a bespoke
 build.
 
-House style is an Apple-minimal look: white surfaces, a single blue accent, an
-SF/system font stack, heavy whitespace. Rebrand by changing ACCENT, INK and
-MUTED below. Cards land in one of two bands: `stat`, `quote` and `image` at the
+This module is the `clean` style, the default for reel-compose.py --style: white
+surfaces, a single blue accent, a system font stack, heavy whitespace. It also
+holds the validation every style shares (normalise_card and the caption checks)
+and the one-word `pulse` caption mode. Rebrand by changing ACCENT, INK and MUTED
+below, or pass --style panel for the dark look in reel_cards_panel.py. Cards land in one of two bands: `stat`, `quote` and `image` at the
 top of the frame (ZONE_TOP, y=150), and `table`, `bars`, `list` and `compare` in
 the lower third (ZONE_LOWER, y=1000). On a 1080x1920 vertical selfie a face can
 reach as low as y=1200, so the lower band starts inside it on tight framing. Look
@@ -44,6 +46,8 @@ Example:
 
 import json
 import math
+
+SUMMARY = "light: white rounded cards, one blue accent, system font, soft rise-in motion"
 
 ACCENT = "#0071e3"
 INK = "#1d1d1f"
@@ -234,6 +238,18 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica N
 """
 
 
+def base_css():
+    """
+    The page CSS for this style: reset, palette, card surface and caption band.
+
+    Part of the style interface that reel-compose.py calls on whichever style
+    --style names: base_css(), captions(lines), render_card(i, card) and
+    REGISTRY. A style module that provides those four can be swapped in without
+    touching the composer. See the Styles section of README.md.
+    """
+    return BASE_CSS
+
+
 def normalise_caption_lines(lines):
     """
     Validate the four timing fields in prep.json's caption_lines.
@@ -375,6 +391,76 @@ LINES.forEach((L,i)=>{{
     return "", f'<div id="{cid}">{"".join(html)}</div>', js
 
 
+# Pulse captions: one word at a time, all caps, centre frame, hard swap.
+# 1060 puts the word's centre at about 59% of the frame height, just below the
+# chin on a typical selfie framing and well clear of the platform UI at the
+# bottom. It also sits across the lower card band (y=1000), so a table, bars,
+# list or compare card shown under pulse captions wants its own `y`.
+PULSE_TOP = 1060
+PULSE_MAX_HOLD = 1.10   # a word never stays longer than this, even before a pause
+PULSE_MIN_HOLD = 0.12   # nor shorter than this, unless the next word starts first
+
+
+def pulse_words(lines):
+    """
+    Flatten caption lines into one timed word list with no overlaps.
+
+    Whisper's word timings are contiguous and occasionally run backwards, so a
+    naive minimum hold pushes a short word past its neighbour's start and two
+    words show at once. Starts are forced monotonic first, then each end is
+    clamped to the next start, and the result is checked rather than trusted.
+    """
+    words = [w for ln in lines for w in ln["words"] if str(w.get("w", "")).strip()]
+    out, last = [], None
+    for w in words:
+        s = w["s"] if last is None else max(w["s"], last)
+        out.append({"w": str(w["w"]).strip(), "s": round(s, 3), "e": w["e"]})
+        last = s
+    for k, w in enumerate(out):
+        nxt = out[k + 1]["s"] if k + 1 < len(out) else None
+        e = max(w["e"], w["s"] + PULSE_MIN_HOLD)
+        e = min(e, w["s"] + PULSE_MAX_HOLD)
+        if nxt is not None:
+            e = min(e, nxt)
+        w["e"] = round(e, 3)
+    for k in range(len(out) - 1):
+        if out[k]["e"] > out[k + 1]["s"]:
+            raise CardValueError(
+                f"pulse captions: word {k} ({out[k]['w']!r}) still overlaps the next word "
+                "after clamping. Refusing to build captions that stack.")
+    return out
+
+
+def pulse_captions(lines, cid="caps"):
+    """
+    The `pulse` caption mode (reel-compose.py --captions pulse). Style
+    independent: white heavy caps with a black outline read on any footage and
+    next to any card style. A style module may define its own pulse_captions to
+    restyle it; the composer uses this one otherwise.
+
+    Each word is its own .cline, so caption_moves and --caption-top move and
+    resize pulse captions exactly as they do phrase captions.
+    """
+    words = pulse_words(lines)
+    css = f"""
+#{cid}{{top:{PULSE_TOP}px;height:150px}}
+#{cid} .cline{{font-family:"Arial Black","Helvetica Neue",Arial,sans-serif;font-size:86px;
+  font-weight:900;letter-spacing:0;line-height:1;text-transform:uppercase;color:#fff;
+  -webkit-text-stroke:8px #000;paint-order:stroke fill;
+  text-shadow:0 5px 0 rgba(0,0,0,.85),0 8px 26px rgba(0,0,0,.6)}}"""
+    html = "".join(f'<div class="cline" id="p{k}">{_esc(w["w"])}</div>'
+                   for k, w in enumerate(words))
+    data = [{"s": w["s"], "e": w["e"]} for w in words]
+    js = f"""
+const PULSE = {json.dumps(data)};
+PULSE.forEach((w,k)=>{{
+  tl.set("#p"+k,{{opacity:0}},0);
+  tl.set("#p"+k,{{opacity:1}},w.s);
+  tl.set("#p"+k,{{opacity:0}},w.e);
+}});"""
+    return css, f'<div id="{cid}">{html}</div>', js
+
+
 # --------------------------------------------------------------------------
 # CARDS
 # --------------------------------------------------------------------------
@@ -455,6 +541,11 @@ tl.to(["#{cid}","#{cid}tag"],{{opacity:0,y:-30,duration:.45,ease:"power2.in"}},{
     return css, html, js
 
 
+# Height of the label row (12 + 22) and the value row (4 + 22) under each bar,
+# fixed by the line-heights in bars() so the reference rule can be placed exactly.
+LABELS_H = 60
+
+
 def bars(i, c):
     """
     A labelled bar chart with an optional reference rule. Use the rule when the
@@ -465,7 +556,10 @@ def bars(i, c):
     series = c["series"]
     mx = max(s["value"] for s in series) or 1
     avg = sum(s["value"] for s in series) / len(series)
-    bh = c.get("bar_height", 230)
+    # 150 rather than the old 230: with a title, sub and note the card then ends
+    # by y=1420 from the lower band, above the caption band at CAPTION_TOP. At
+    # 230 it ran about 80px into the captions.
+    bh = c.get("bar_height", 150)
     cells = "".join(
         f'<div class="bw"><div class="bc"><div class="bar" id="{cid}b{k}"></div></div>'
         f'<div class="bl">{_esc(s["label"])}</div>'
@@ -473,24 +567,27 @@ def bars(i, c):
         for k, s in enumerate(series))
     rule = ""
     if c.get("rule"):
-        rp = round(avg / mx * bh)
+        # The rule is positioned from the bottom of .bars, and the bars stand on
+        # the label and value rows beneath them, so it is lifted by LABELS_H.
+        # Without that lift the line sat about 60px below the mean it labels.
+        rp = round(avg / mx * bh) + LABELS_H
         rule = (f'<div class="rule" style="bottom:{rp}px"></div>'
                 f'<div class="rlab" style="bottom:{rp+8}px">{_esc(c["rule"].get("label",""))}</div>')
     css = f"""
 #{cid}{{left:60px;top:{c.get('y',ZONE_LOWER)}px;width:960px;padding:38px 40px 30px}}
 #{cid} h4{{font-size:30px;font-weight:700;color:var(--ink);letter-spacing:-.02em;margin-bottom:6px}}
-#{cid} .sub{{font-size:22px;color:var(--muted);margin-bottom:30px}}
-#{cid} .bars{{display:flex;gap:14px;align-items:flex-end;height:300px;position:relative}}
+#{cid} .sub{{font-size:22px;color:var(--muted);margin-bottom:16px}}
+#{cid} .bars{{display:flex;gap:14px;align-items:flex-end;height:{bh + 70}px;position:relative}}
 #{cid} .bw{{flex:1;display:flex;flex-direction:column;align-items:center}}
 #{cid} .bc{{height:{bh}px;width:100%;display:flex;align-items:flex-end}}
 #{cid} .bar{{width:100%;background:var(--blue);border-radius:10px 10px 0 0;height:0%}}
-#{cid} .bl{{font-size:19px;color:var(--muted);margin-top:12px;white-space:nowrap}}
-#{cid} .bv{{font-size:22px;font-weight:700;color:var(--ink);margin-top:4px;
+#{cid} .bl{{font-size:19px;line-height:22px;color:var(--muted);margin-top:12px;white-space:nowrap}}
+#{cid} .bv{{font-size:22px;line-height:22px;font-weight:700;color:var(--ink);margin-top:4px;
   font-variant-numeric:tabular-nums;opacity:0}}
 #{cid} .rule{{position:absolute;left:0;right:0;height:0;border-top:5px dashed #ff3b30;opacity:0}}
 #{cid} .rlab{{position:absolute;right:0;font-size:20px;font-weight:700;color:#ff3b30;
   background:#fff;padding:2px 8px;border-radius:6px;opacity:0}}
-#{cid} .note{{margin-top:22px;font-size:26px;font-weight:600;color:var(--ink);
+#{cid} .note{{margin-top:12px;font-size:26px;font-weight:600;color:var(--ink);
   opacity:0;text-align:center}}"""
     html = (f'<div class="card" id="{cid}">'
             f'<h4>{_esc(c.get("title",""))}</h4>'
@@ -720,10 +817,58 @@ CARD_FIELDS = {
 }
 
 
-def render_card(i, c):
+def text_lines(text, chars_per_line):
+    """Rough count of the lines a string wraps to, for estimate_box."""
+    plain = str(text or "").replace("**", "")
+    return max(1, math.ceil(len(plain) / max(1, chars_per_line)))
+
+
+def estimate_box(c):
+    """
+    (top, bottom) in px of a validated card on the 1080x1920 frame, estimated
+    from its fields, or None when it cannot be known (an image's height depends
+    on the picture). reel-compose.py uses it to warn when a card would cross the
+    caption band. The numbers were calibrated against the rendered page; they
+    are an early warning, and the preview on the real footage is still the check.
+    A style without an estimate_box simply gets no warning.
+    """
     t = c.get("type")
-    if t not in REGISTRY:
-        raise SystemExit(f"unknown card type '{t}'. Available: {', '.join(sorted(REGISTRY))}")
+    if t == "table":
+        top = c.get("y", ZONE_LOWER)
+        return top, top + c.get("height", 420)
+    if t == "bars":
+        top = c.get("y", ZONE_LOWER)
+        h = 68 + 42 + (43 if c.get("sub") else 0) + c.get("bar_height", 150) + 70
+        h += 43 if c.get("note") else 0
+        return top, top + h
+    if t == "list":
+        top = c.get("y", ZONE_LOWER)
+        h = 80 + (64 if c.get("title") else 26)
+        h += sum(25 + 39 * text_lines(x, 55) for x in c["items"])
+        return top, top + h
+    if t == "compare":
+        top = c.get("y", ZONE_LOWER)
+        extra = max(text_lines(s.get("note", ""), 26) for s in (c["left"], c["right"])) - 1
+        return top, top + 340 + 28 * extra
+    if t == "quote":
+        top = c.get("y", ZONE_TOP)
+        lines = text_lines(c["text"], int(840 / (c.get("size", 56) * 0.45)))
+        return top, top + 92 + lines * round(c.get("size", 56) * 1.14) + (49 if c.get("attr") else 0)
+    if t == "stat":
+        top = c.get("y", ZONE_TOP)
+        return top, top + 321
+    return None
+
+
+def render_with(registry, i, c):
+    """
+    Check one card's timing fields, validate it, and render it with the card
+    function the given style registry maps its type to. Every style routes
+    through here, so a card is validated the same way whichever style draws it.
+    """
+    t = c.get("type")
+    if t not in registry:
+        raise SystemExit(f"unknown card type '{t}'. Available: {', '.join(sorted(registry))}")
     if t == "hook":
         c = dict(c)
         c["at"] = 0
@@ -731,7 +876,11 @@ def render_card(i, c):
         raise SystemExit(f"card {i} ({t}) is missing required field 'at'")
     if t != "endcard" and "out" not in c:
         raise SystemExit(f"card {i} ({t}) needs an 'out' time (endcard is the only card that may run to the end)")
-    return REGISTRY[t](i, normalise_card(i, c))
+    return registry[t](i, normalise_card(i, c))
+
+
+def render_card(i, c):
+    return render_with(REGISTRY, i, c)
 
 
 def _cli():
