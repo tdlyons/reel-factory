@@ -194,6 +194,8 @@ On a `table`, only `widths[0]` is read, as the flex weight of the label column. 
 
 Cards default to one of two vertical bands: `stat`, `quote` and `image` sit at the top of the frame at y=150, and `table`, `bars`, `list` and `compare` sit in the lower third at y=1000. The hook sits at y=132. With phrase captions the caption band starts at y=1440, which puts the text at about 79% of the frame height, above the username and caption text the platforms draw over the bottom of a vertical video. On a 1080x1920 vertical selfie a face can occupy roughly y=280 to y=1200, so the lower band starts inside that range and a tightly framed speaker can end up under a card. That is one of the things the Phase 3 preview is for. Override the vertical position per card with `y` when a card lands on the face.
 
+Every card keeps 20px clear of the caption band. At their default sizes the lower-band cards end by y=1420, but a long list, a tall table or a big `bar_height` grows down into the captions. `reel-compose.py` estimates each card's box from its fields and prints a WARN for any card that would cross the band active while it is on screen, including bands moved by `caption_moves` or `--caption-top` and the pulse band. Fix it with a smaller `y`, fewer items, a smaller `height` or `bar_height`, or a caption move, then confirm on the preview. The estimate is an early warning, the preview is the check.
+
 **The Instagram safe zone.** Build to the real Reels interface, not only to the face:
 
 | edge | keep clear | what sits there |
@@ -307,13 +309,14 @@ A style is one Python module in `scripts/` that defines the CSS, the card HTML a
 - every card routes through `reel_cards.render_with`, so it is validated like the others
 - colours reach the cards through CSS variables, so a recolour of the new style is a ten line file
 - state changes are paired `gsap.set()` and `tl.to()` calls, never `tl.call()`, no `backdrop-filter`, nothing that reads the clock or a random number
-- the default card positions stay inside the Instagram content box below, and off the caption band
+- the default card positions stay inside the Instagram content box below, and every lower-band card at its default size ends at least 20px above the caption band at y=1440
+- it provides `estimate_box(card)` returning the card's (top, bottom) on the frame, so the composer can warn when a card crosses the caption band. A style without it still works and simply gets no warning
 
 Compose the example `cards.json` with the new style, lint it, and preview it on real footage before using it on a drop.
 
 ### Caption styles
 
-`--captions phrase` is the default. `--captions pulse` shows one word at a time in heavy white caps with a black outline, centred at about 59% of the frame height, swapping hard with no fade. Word times are forced in order and clamped so no two words are ever on screen together, and the build refuses if any overlap survives. Pulse sits across the lower card band, so the composer warns about every `table`, `bars`, `list` or `compare` card left at its default height: give each a `y` below the word, or move the captions with `caption_moves` while the card is up, and check it on the preview. `caption_moves` and `--caption-top` move pulse captions the same way they move phrase captions.
+`--captions phrase` is the default. `--captions pulse` shows one word at a time in heavy white caps with a black outline, centred at about 59% of the frame height, swapping hard with no fade. Word times are forced in order and clamped so no two words are ever on screen together, and the build refuses if any overlap survives. Pulse sits across the lower card band, so the caption band check warns about every lower card left at its default height: give each a `y` below the word, or move the captions with `caption_moves` while the card is up, and check it on the preview. `caption_moves` and `--caption-top` move pulse captions the same way they move phrase captions.
 
 ### Cinematic captions
 

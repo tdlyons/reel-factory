@@ -129,6 +129,33 @@ class ListStyles(argparse.Action):
         parser.exit()
 
 
+CAPTION_GAP = 20   # px a card's bottom edge keeps clear of the caption band
+
+
+def caption_bands(mode, caption_top, moves, start, end):
+    """
+    Every (top, bottom) the caption band occupies between start and end, given
+    the caption mode, --caption-top and any caption_moves that set top or height.
+    """
+    if mode == "pulse":
+        top, height = C.PULSE_TOP, 150
+    else:
+        top, height = C.CAPTION_TOP, 170
+    if caption_top is not None:
+        top = caption_top
+    bands, cur = [], (top, height)
+    for m in moves:
+        if m["at"] > start:
+            break
+        cur = (m.get("top", cur[0]), m.get("height", cur[1]))
+    bands.append(cur)
+    for m in moves:
+        if start < m["at"] < end:
+            cur = (m.get("top", cur[0]), m.get("height", cur[1]))
+            bands.append(cur)
+    return [(t, t + h) for t, h in bands]
+
+
 FPS = 30
 TAIL = 4.3   # seconds of end card after a platform cut, only with --endcard
 EXIT_CLEAR = 0.5   # a card's exit tween has to finish before the last frame
@@ -474,13 +501,25 @@ def main():
     for start, length in dead_air(cards, duration):
         print(f"  WARN: {length}s with no card from {start}s. Over {DEAD_AIR_EARLY:g}s in the first "
               f"{DEAD_AIR_WINDOW:g}s, or {DEAD_AIR_LATE:g}s after that, is dead air on a vertical feed.")
-    if a.captions == "pulse":
-        low = [f"{c['type']}@{c['at']}s" for c in cards
-               if c.get("type") in ("table", "bars", "list", "compare") and "y" not in c]
-        if low:
-            print(f"  WARN: {', '.join(low)} sit in the lower band at y={C.ZONE_LOWER}, across the "
-                  f"pulse caption at y={C.PULSE_TOP}. Give each a 'y' below the word, or move the "
-                  "captions with caption_moves while they are on screen. Check it on the preview.")
+    # ---- cards against the caption band. A card whose box runs into the band
+    # puts the captions on top of the chart's edge, or the chart over the words.
+    # Advisory, because the boxes are estimates: the preview is still the check.
+    if a.captions != "none" and hasattr(S, "estimate_box"):
+        for c in cards:
+            if c.get("type") in ("hook", "endcard"):
+                continue
+            box = S.estimate_box(c)
+            if not box:
+                continue
+            for b_top, b_bot in caption_bands(a.captions, a.caption_top, moves,
+                                              c.get("at", 0), c.get("out", duration)):
+                if box[1] > b_top - CAPTION_GAP and box[0] < b_bot:
+                    print(f"  WARN: the {c['type']} card at {c['at']}s runs from about y={box[0]} to "
+                          f"y={box[1]}, into the caption band at y={b_top} to {b_bot}. Keep a card "
+                          f"{CAPTION_GAP}px clear of the band: give it a smaller 'y', fewer rows or "
+                          "items, a smaller height, or move the captions with caption_moves. "
+                          "Check it on the preview.")
+                    break
     on_at_end = [c for c in cards if c.get("type") != "endcard" and c.get("out", 0) >= duration - 0.05]
     for c in on_at_end:
         print(f"  WARN: the {c['type']} card is still on screen at the last frame. End on live "

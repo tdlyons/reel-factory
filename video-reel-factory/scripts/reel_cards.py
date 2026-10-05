@@ -541,6 +541,11 @@ tl.to(["#{cid}","#{cid}tag"],{{opacity:0,y:-30,duration:.45,ease:"power2.in"}},{
     return css, html, js
 
 
+# Height of the label row (12 + 22) and the value row (4 + 22) under each bar,
+# fixed by the line-heights in bars() so the reference rule can be placed exactly.
+LABELS_H = 60
+
+
 def bars(i, c):
     """
     A labelled bar chart with an optional reference rule. Use the rule when the
@@ -551,7 +556,10 @@ def bars(i, c):
     series = c["series"]
     mx = max(s["value"] for s in series) or 1
     avg = sum(s["value"] for s in series) / len(series)
-    bh = c.get("bar_height", 230)
+    # 150 rather than the old 230: with a title, sub and note the card then ends
+    # by y=1420 from the lower band, above the caption band at CAPTION_TOP. At
+    # 230 it ran about 80px into the captions.
+    bh = c.get("bar_height", 150)
     cells = "".join(
         f'<div class="bw"><div class="bc"><div class="bar" id="{cid}b{k}"></div></div>'
         f'<div class="bl">{_esc(s["label"])}</div>'
@@ -559,24 +567,27 @@ def bars(i, c):
         for k, s in enumerate(series))
     rule = ""
     if c.get("rule"):
-        rp = round(avg / mx * bh)
+        # The rule is positioned from the bottom of .bars, and the bars stand on
+        # the label and value rows beneath them, so it is lifted by LABELS_H.
+        # Without that lift the line sat about 60px below the mean it labels.
+        rp = round(avg / mx * bh) + LABELS_H
         rule = (f'<div class="rule" style="bottom:{rp}px"></div>'
                 f'<div class="rlab" style="bottom:{rp+8}px">{_esc(c["rule"].get("label",""))}</div>')
     css = f"""
 #{cid}{{left:60px;top:{c.get('y',ZONE_LOWER)}px;width:960px;padding:38px 40px 30px}}
 #{cid} h4{{font-size:30px;font-weight:700;color:var(--ink);letter-spacing:-.02em;margin-bottom:6px}}
-#{cid} .sub{{font-size:22px;color:var(--muted);margin-bottom:30px}}
-#{cid} .bars{{display:flex;gap:14px;align-items:flex-end;height:300px;position:relative}}
+#{cid} .sub{{font-size:22px;color:var(--muted);margin-bottom:16px}}
+#{cid} .bars{{display:flex;gap:14px;align-items:flex-end;height:{bh + 70}px;position:relative}}
 #{cid} .bw{{flex:1;display:flex;flex-direction:column;align-items:center}}
 #{cid} .bc{{height:{bh}px;width:100%;display:flex;align-items:flex-end}}
 #{cid} .bar{{width:100%;background:var(--blue);border-radius:10px 10px 0 0;height:0%}}
-#{cid} .bl{{font-size:19px;color:var(--muted);margin-top:12px;white-space:nowrap}}
-#{cid} .bv{{font-size:22px;font-weight:700;color:var(--ink);margin-top:4px;
+#{cid} .bl{{font-size:19px;line-height:22px;color:var(--muted);margin-top:12px;white-space:nowrap}}
+#{cid} .bv{{font-size:22px;line-height:22px;font-weight:700;color:var(--ink);margin-top:4px;
   font-variant-numeric:tabular-nums;opacity:0}}
 #{cid} .rule{{position:absolute;left:0;right:0;height:0;border-top:5px dashed #ff3b30;opacity:0}}
 #{cid} .rlab{{position:absolute;right:0;font-size:20px;font-weight:700;color:#ff3b30;
   background:#fff;padding:2px 8px;border-radius:6px;opacity:0}}
-#{cid} .note{{margin-top:22px;font-size:26px;font-weight:600;color:var(--ink);
+#{cid} .note{{margin-top:12px;font-size:26px;font-weight:600;color:var(--ink);
   opacity:0;text-align:center}}"""
     html = (f'<div class="card" id="{cid}">'
             f'<h4>{_esc(c.get("title",""))}</h4>'
@@ -804,6 +815,49 @@ CARD_FIELDS = {
     "endcard": "title, sub, pill, foot. Takes no 'out', it runs to the end of the composition. "
                "Not for social cuts: rendered only by reel-compose.py --cut --endcard",
 }
+
+
+def text_lines(text, chars_per_line):
+    """Rough count of the lines a string wraps to, for estimate_box."""
+    plain = str(text or "").replace("**", "")
+    return max(1, math.ceil(len(plain) / max(1, chars_per_line)))
+
+
+def estimate_box(c):
+    """
+    (top, bottom) in px of a validated card on the 1080x1920 frame, estimated
+    from its fields, or None when it cannot be known (an image's height depends
+    on the picture). reel-compose.py uses it to warn when a card would cross the
+    caption band. The numbers were calibrated against the rendered page; they
+    are an early warning, and the preview on the real footage is still the check.
+    A style without an estimate_box simply gets no warning.
+    """
+    t = c.get("type")
+    if t == "table":
+        top = c.get("y", ZONE_LOWER)
+        return top, top + c.get("height", 420)
+    if t == "bars":
+        top = c.get("y", ZONE_LOWER)
+        h = 68 + 42 + (43 if c.get("sub") else 0) + c.get("bar_height", 150) + 70
+        h += 43 if c.get("note") else 0
+        return top, top + h
+    if t == "list":
+        top = c.get("y", ZONE_LOWER)
+        h = 80 + (64 if c.get("title") else 26)
+        h += sum(25 + 39 * text_lines(x, 55) for x in c["items"])
+        return top, top + h
+    if t == "compare":
+        top = c.get("y", ZONE_LOWER)
+        extra = max(text_lines(s.get("note", ""), 26) for s in (c["left"], c["right"])) - 1
+        return top, top + 340 + 28 * extra
+    if t == "quote":
+        top = c.get("y", ZONE_TOP)
+        lines = text_lines(c["text"], int(840 / (c.get("size", 56) * 0.45)))
+        return top, top + 92 + lines * round(c.get("size", 56) * 1.14) + (49 if c.get("attr") else 0)
+    if t == "stat":
+        top = c.get("y", ZONE_TOP)
+        return top, top + 321
+    return None
 
 
 def render_with(registry, i, c):

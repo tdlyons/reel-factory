@@ -225,7 +225,7 @@ Explainer scenes are full-frame animated scenes that replace the talking head fo
 
 - The `hook` card is fully opaque on frame 0, with no entrance animation. It may only animate out.
 - Text stays inside the Instagram content box, x 65 to 950 and y 269 to 1560. The hook is the one exception, allowed to sit at the top for the few seconds it is on screen.
-- The caption band stays clear: cards do not sit over the captions, and a caption is readable against whatever is behind it.
+- The caption band stays clear: every card ends at least 20px above it, and a caption is readable against whatever is behind it. The shipped styles size their lower cards to end by y=1420 above the band at y=1440, and the composer warns when a card's content grows it into the band.
 - No card or caption covers the face, the mouth, the hands, or anything the speaker is showing. Check it on the preview of the real footage, card by card.
 - State changes are paired `gsap.set()` and `tl.to()` calls, never `tl.call()`, with no `backdrop-filter` and nothing that reads the clock or a random number, so every frame renders the same however the renderer seeks.
 

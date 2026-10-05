@@ -40,6 +40,7 @@ def base_css():
 captions = _panel.captions
 render_card = _panel.render_card
 REGISTRY = _panel.REGISTRY
+estimate_box = _panel.estimate_box
 
 
 if __name__ == "__main__":

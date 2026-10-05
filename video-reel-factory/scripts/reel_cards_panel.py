@@ -257,7 +257,8 @@ def bars(i, c):
     series = c["series"]
     mx = max(s["value"] for s in series) or 1
     avg = sum(s["value"] for s in series) / len(series)
-    bh = c.get("bar_height", 230)
+    # Sized so a bars card with a title, sub and note ends above the caption band.
+    bh = c.get("bar_height", 125)
     cols = "".join(
         f'<div class="bc"><div class="b" id="{cid}b{k}" style="height:{round(s["value"] / mx * 100, 1)}%"></div></div>'
         for k, s in enumerate(series))
@@ -273,7 +274,7 @@ def bars(i, c):
 #{cid} h4{{font-family:var(--font-head);font-stretch:condensed;font-size:44px;font-weight:800;
   color:var(--ink);text-transform:uppercase;letter-spacing:.01em;line-height:1.05}}
 #{cid} .sub{{font-size:22px;color:var(--muted);margin-top:6px}}
-#{cid} .plot{{position:relative;height:{bh}px;display:flex;align-items:flex-end;gap:14px;margin-top:22px}}
+#{cid} .plot{{position:relative;height:{bh}px;display:flex;align-items:flex-end;gap:14px;margin-top:16px}}
 #{cid} .bc{{flex:1;height:100%;display:flex;align-items:flex-end}}
 #{cid} .b{{width:100%;border-radius:8px 8px 0 0;transform-origin:50% 100%;
   background:linear-gradient(180deg,var(--accent),color-mix(in srgb, var(--accent) 45%, var(--tone)))}}
@@ -284,7 +285,7 @@ def bars(i, c):
 #{cid} .rule{{position:absolute;left:0;right:0;height:0;border-top:4px dashed var(--mark);opacity:0}}
 #{cid} .rlab{{position:absolute;right:0;font-family:var(--font-mono);font-size:20px;font-weight:600;
   color:var(--mark);letter-spacing:.08em;text-transform:uppercase;opacity:0}}
-#{cid} .note{{margin-top:20px;font-size:26px;font-weight:600;color:var(--ink);opacity:0}}"""
+#{cid} .note{{margin-top:12px;font-size:26px;font-weight:600;color:var(--ink);opacity:0}}"""
     inner = (_rail(c.get("eyebrow", ""))
              + (f'<h4>{_esc(c["title"])}</h4>' if c.get("title") else "")
              + (f'<div class="sub">{_esc(c["sub"])}</div>' if c.get("sub") else "")
@@ -428,6 +429,42 @@ def endcard(i, c):
 tl.set("#{cid}",{{opacity:0}},0);
 tl.to("#{cid}",{{opacity:1,duration:.34,ease:"power2.out"}},{c['at']});"""
     return css, html, js
+
+
+def estimate_box(c):
+    """
+    (top, bottom) of a validated card, estimated from its fields, or None when
+    it cannot be known. Calibrated against the rendered page, see
+    reel_cards.estimate_box for what it is for.
+    """
+    lines = _clean.text_lines
+    t = c.get("type")
+    base = 84   # padding plus the rail
+    if t == "table":
+        top = c.get("y", ZONE_LOWER)
+        return top, top + c.get("height", 420) - 20
+    if t == "bars":
+        top = c.get("y", ZONE_LOWER)
+        h = base + (46 if c.get("title") else 0) + (33 if c.get("sub") else 0)
+        h += 16 + c.get("bar_height", 125) + 70 + (43 if c.get("note") else 0)
+        return top, top + h
+    if t == "list":
+        top = c.get("y", ZONE_LOWER)
+        h = base + (73 if c.get("title") else 0)
+        h += sum(12 + 39 * lines(x, 45) for x in c["items"])
+        return top, top + h
+    if t == "compare":
+        top = c.get("y", ZONE_LOWER)
+        extra = max(lines(s.get("note", ""), 26) for s in (c["left"], c["right"])) - 1
+        return top, top + 335 + 28 * extra
+    if t == "quote":
+        top = c.get("y", ZONE_TOP)
+        n = lines(c["text"], int(726 / (c.get("size", 72) * 0.45)))
+        return top, top + base + n * round(c.get("size", 72) * 1.04) + (47 if c.get("attr") else 0)
+    if t == "stat":
+        top = c.get("y", ZONE_TOP)
+        return top, top + 290
+    return None
 
 
 REGISTRY = {
