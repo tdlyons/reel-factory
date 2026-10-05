@@ -32,7 +32,7 @@ Install instructions live at https://claude.com/claude-code
 
 ## 3. python3
 
-The pipeline scripts (`reel-prep.py`, `reel_markers.py`, `reel_cards.py`, `reel-compose.py`, `reel-trim.py`, `reel-preview.py`, `reel-sfx.py`, `reel-verify.py`) use the Python standard library plus openai-whisper for transcription, covered in step 6. Nothing else. Python 3.8 or newer is enough.
+The pipeline scripts (`reel-prep.py`, `reel_markers.py`, `reel_cards.py` and the other `reel_cards_*.py` style modules, `reel-compose.py`, `reel-trim.py`, `reel-preview.py`, `reel-sfx.py`, `reel-verify.py`) use the Python standard library plus openai-whisper for transcription, covered in step 6. Nothing else. Python 3.8 or newer is enough.
 
 Check: `python3 --version`
 
@@ -226,10 +226,13 @@ python3 -c "import whisper; print('whisper ok')"
 ls ~/my-reels/video-projects ~/my-reels/vendor/gsap.min.js
 node ~/.claude/skills/video-reel-factory/assets/screenshot-thumb.mjs --help | head -1
 python3 ~/.claude/skills/video-reel-factory/scripts/reel-preview.py --help | head -1
+python3 ~/.claude/skills/video-reel-factory/scripts/reel-compose.py --list-styles
 tesseract --version | head -1     # optional
 ls "$REEL_SFX"                    # optional
 ls ~/.claude/skills/video-reel-factory/SKILL.md
 ```
+
+The styles use system fonts, so none of them needs a font installed or vendored. `--list-styles` printing every style proves each style module imports cleanly.
 
 That covers everything except the one check that has to actually run a browser. Do the two-command Playwright check from step 9 as well, since it is the only one that proves the screenshot step will work.
 

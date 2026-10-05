@@ -21,6 +21,17 @@ and breaks the loop. Endcards are dropped with a note on every run unless --cut
 is given together with --endcard, which restores the old 4.3 second end card
 tail for work that is not going to a social feed.
 
+The look comes from a style, picked with --style. A style is one Python module
+that provides base_css(), captions(lines), render_card(i, card) and REGISTRY.
+`clean` (reel_cards.py) is the default; every other reel_cards_<name>.py file
+beside this script is found automatically and selected as --style <name>, with
+underscores in the file name read as dashes. --list-styles prints them.
+
+Captions come in three modes, picked with --captions: `phrase` (the default,
+a line at a time with the spoken word highlighted), `pulse` (one word at a time,
+all caps, centre frame) and `none` (no caption layer, for footage that already
+has captions burned in).
+
 It also prints the exact composite command for the variant it built, so the
 full-length and neutral recipes stay identical filter for filter. The mirror
 decision in that command comes from the prep report, and when prep could not
@@ -29,7 +40,8 @@ encoded as 48 kHz stereo AAC, see ENCODE below for why both numbers matter.
 
 Requires:
   Python 3.8+ (standard library only)
-  reel_cards.py next to this file (imported automatically, any working directory)
+  reel_cards.py next to this file (imported automatically, any working directory),
+  plus reel_cards_<name>.py for any other style you select
   a local assets/gsap.min.js in the project, see --gsap
   npx hyperframes to lint, snapshot and render the composition afterwards
 
@@ -40,6 +52,10 @@ Example:
   # platform variant: end at the cut, on live footage
   python3 reel-compose.py --prep prep/prep.json --cards cards.json \\
       --project ./video-projects/my-reel-neutral --cut 62.7
+
+  # the dark panel style with one-word captions
+  python3 reel-compose.py --prep prep/prep.json --cards cards.json \\
+      --project ./video-projects/my-reel --style panel --captions pulse
 
 cards.json:
 {
@@ -52,7 +68,7 @@ cards.json:
 }
 """
 
-import argparse, json, shutil, sys
+import argparse, importlib, json, shutil, sys
 from pathlib import Path
 
 # Resolve this script's own directory so `import reel_cards` works from any
@@ -63,6 +79,55 @@ try:
 except ImportError:
     sys.exit("error: could not import reel_cards.py.\n"
              "       It must sit in the same directory as reel-compose.py.")
+
+SCRIPTS = Path(__file__).resolve().parent
+DEFAULT_STYLE = "clean"
+CAPTION_MODES = ("phrase", "pulse", "none")
+# Everything reel-compose.py calls on a style module.
+STYLE_INTERFACE = ("base_css", "captions", "render_card", "REGISTRY")
+
+
+def available_styles():
+    """
+    Style name -> module name. `clean` is reel_cards.py; every other
+    reel_cards_<name>.py beside this script is a style called <name>, with
+    underscores read as dashes. Dropping a file in is the whole registration.
+    """
+    styles = {DEFAULT_STYLE: "reel_cards"}
+    for f in sorted(SCRIPTS.glob("reel_cards_*.py")):
+        styles[f.stem[len("reel_cards_"):].replace("_", "-")] = f.stem
+    return styles
+
+
+def load_style(name):
+    styles = available_styles()
+    if name not in styles:
+        sys.exit(f"error: unknown style {name!r}. Available: {', '.join(styles)}")
+    try:
+        mod = importlib.import_module(styles[name])
+    except Exception as e:   # a broken style file should name itself, not dump a trace
+        sys.exit(f"error: style {name!r} ({styles[name]}.py) failed to import: {e}")
+    missing = [attr for attr in STYLE_INTERFACE if not hasattr(mod, attr)]
+    if missing:
+        sys.exit(f"error: style {name!r} ({styles[name]}.py) is missing {', '.join(missing)}. "
+                 f"A style must provide {', '.join(STYLE_INTERFACE)}.")
+    if "hook" not in mod.REGISTRY:
+        sys.exit(f"error: style {name!r} has no 'hook' card, and every reel needs one.")
+    return mod
+
+
+class ListStyles(argparse.Action):
+    def __init__(self, option_strings, dest, **kw):
+        super().__init__(option_strings, dest, nargs=0, default=argparse.SUPPRESS, **kw)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        for name, module in available_styles().items():
+            mod = load_style(name)
+            first = (mod.__doc__ or "").strip().splitlines()
+            summary = getattr(mod, "SUMMARY", first[0] if first else "")
+            print(f"  {name:<16} {module + '.py':<32} {summary}")
+        parser.exit()
+
 
 FPS = 30
 TAIL = 4.3   # seconds of end card after a platform cut, only with --endcard
@@ -188,7 +253,8 @@ def build_parser():
         epilog="example:\n"
                "  python3 reel-compose.py --prep prep/prep.json --cards cards.json \\\n"
                "      --project ./video-projects/my-reel --cut 62.7\n\n"
-               "run `python3 reel_cards.py --list` to see the card types cards.json accepts.",
+               "run `python3 reel_cards.py --list` to see the card types cards.json accepts,\n"
+               "and `python3 reel-compose.py --list-styles` to see the styles.",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--prep", required=True,
                     help="prep.json written by reel-prep.py (captions, probe data, cut plan)")
@@ -211,6 +277,16 @@ def build_parser():
     ap.add_argument("--caption-top", type=int, default=None,
                     help="move the caption band off its default y, needed when the bottom of "
                          "the frame is occupied by a reaction PiP or burned-in UI")
+    ap.add_argument("--style", "--theme", dest="style", default=DEFAULT_STYLE,
+                    choices=list(available_styles()),
+                    help=f"card style (default: {DEFAULT_STYLE}). Any reel_cards_<name>.py beside "
+                         "this script is available as <name>; see --list-styles")
+    ap.add_argument("--list-styles", action=ListStyles,
+                    help="list the available styles and exit")
+    ap.add_argument("--captions", default="phrase", choices=CAPTION_MODES,
+                    help="caption mode: phrase (default, a line at a time with the spoken word "
+                         "highlighted), pulse (one word at a time, all caps, centre frame), or none "
+                         "(no caption layer, for footage that already carries its captions)")
     ap.add_argument("--gsap", default=None,
                     help="path to a gsap.min.js to copy into the project's assets/. GSAP must be "
                          "local because headless Chrome will not reliably fetch a CDN at render time")
@@ -223,6 +299,7 @@ def main():
     if a.endcard and a.cut is None:
         ap.error("--endcard only applies to a --cut variant")
 
+    S = load_style(a.style)
     prep = load_json(a.prep, "prep.json")
     spec = load_json(a.cards, "cards.json")
     if "cards" not in spec:
@@ -364,10 +441,21 @@ def main():
         lines = [l for l in lines if l["words"]]
         moves = [m for m in moves if m["at"] < duration]
 
-    cap_css, cap_html, cap_js = C.captions(lines)
-    cap_js += C.caption_moves_js(moves)
+    if a.captions == "none":
+        cap_css, cap_html, cap_js = "", "", ""
+        if moves:
+            print("  NOTE: caption_moves ignored, --captions none draws no caption layer.")
+    else:
+        try:
+            if a.captions == "pulse":
+                cap_css, cap_html, cap_js = getattr(S, "pulse_captions", C.pulse_captions)(lines)
+            else:
+                cap_css, cap_html, cap_js = S.captions(lines)
+        except C.CardValueError as e:
+            sys.exit(f"error: {e}")
+        cap_js += C.caption_moves_js(moves)
 
-    css_parts, html_parts, js_parts = [C.BASE_CSS, cap_css], [], [cap_js]
+    css_parts, html_parts, js_parts = [S.base_css(), cap_css], [], [cap_js]
     if a.caption_top is not None:
         css_parts.append(f"\n#caps{{top:{a.caption_top}px}}")
     for i, c in enumerate(cards):
@@ -375,7 +463,7 @@ def main():
             sys.exit(f"error: card {i} ({c['type']}) exits at {c['out']}s but the composition "
                      f"is {duration}s")
         try:
-            css, html, js = C.render_card(i, c)
+            css, html, js = S.render_card(i, c)
         except C.CardValueError as e:
             sys.exit(f"error: {e}")
         css_parts.append(css); html_parts.append(html); js_parts.append(js)
@@ -386,6 +474,13 @@ def main():
     for start, length in dead_air(cards, duration):
         print(f"  WARN: {length}s with no card from {start}s. Over {DEAD_AIR_EARLY:g}s in the first "
               f"{DEAD_AIR_WINDOW:g}s, or {DEAD_AIR_LATE:g}s after that, is dead air on a vertical feed.")
+    if a.captions == "pulse":
+        low = [f"{c['type']}@{c['at']}s" for c in cards
+               if c.get("type") in ("table", "bars", "list", "compare") and "y" not in c]
+        if low:
+            print(f"  WARN: {', '.join(low)} sit in the lower band at y={C.ZONE_LOWER}, across the "
+                  f"pulse caption at y={C.PULSE_TOP}. Give each a 'y' below the word, or move the "
+                  "captions with caption_moves while they are on screen. Check it on the preview.")
     on_at_end = [c for c in cards if c.get("type") != "endcard" and c.get("out", 0) >= duration - 0.05]
     for c in on_at_end:
         print(f"  WARN: the {c['type']} card is still on screen at the last frame. End on live "
@@ -459,6 +554,7 @@ window.__timelines["main"] = tl;
     kinds = ", ".join(f"{c['type']}@{c['at']}s" for c in cards)
     print(f"OK {proj}/index.html")
     print(f"  {duration}s @ {a.fps}fps, {len(lines)} caption lines, {len(cards)} cards")
+    print(f"  style: {a.style}, captions: {a.captions}")
     print(f"  cards: {kinds}")
     print(f"  {flip_note}")
     if moves:

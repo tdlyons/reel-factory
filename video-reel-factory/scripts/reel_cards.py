@@ -10,9 +10,11 @@ whatever analysis sits behind the video. So the cards themselves have to be
 reusable shells that any video can fill, otherwise every video is a bespoke
 build.
 
-House style is an Apple-minimal look: white surfaces, a single blue accent, an
-SF/system font stack, heavy whitespace. Rebrand by changing ACCENT, INK and
-MUTED below. Cards land in one of two bands: `stat`, `quote` and `image` at the
+This module is the `clean` style, the default for reel-compose.py --style: white
+surfaces, a single blue accent, a system font stack, heavy whitespace. It also
+holds the validation every style shares (normalise_card and the caption checks)
+and the one-word `pulse` caption mode. Rebrand by changing ACCENT, INK and MUTED
+below, or pass --style panel for the dark look in reel_cards_panel.py. Cards land in one of two bands: `stat`, `quote` and `image` at the
 top of the frame (ZONE_TOP, y=150), and `table`, `bars`, `list` and `compare` in
 the lower third (ZONE_LOWER, y=1000). On a 1080x1920 vertical selfie a face can
 reach as low as y=1200, so the lower band starts inside it on tight framing. Look
@@ -44,6 +46,8 @@ Example:
 
 import json
 import math
+
+SUMMARY = "light: white rounded cards, one blue accent, system font, soft rise-in motion"
 
 ACCENT = "#0071e3"
 INK = "#1d1d1f"
@@ -234,6 +238,18 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica N
 """
 
 
+def base_css():
+    """
+    The page CSS for this style: reset, palette, card surface and caption band.
+
+    Part of the style interface that reel-compose.py calls on whichever style
+    --style names: base_css(), captions(lines), render_card(i, card) and
+    REGISTRY. A style module that provides those four can be swapped in without
+    touching the composer. See the Styles section of README.md.
+    """
+    return BASE_CSS
+
+
 def normalise_caption_lines(lines):
     """
     Validate the four timing fields in prep.json's caption_lines.
@@ -373,6 +389,76 @@ LINES.forEach((L,i)=>{{
   }});
 }});"""
     return "", f'<div id="{cid}">{"".join(html)}</div>', js
+
+
+# Pulse captions: one word at a time, all caps, centre frame, hard swap.
+# 1060 puts the word's centre at about 59% of the frame height, just below the
+# chin on a typical selfie framing and well clear of the platform UI at the
+# bottom. It also sits across the lower card band (y=1000), so a table, bars,
+# list or compare card shown under pulse captions wants its own `y`.
+PULSE_TOP = 1060
+PULSE_MAX_HOLD = 1.10   # a word never stays longer than this, even before a pause
+PULSE_MIN_HOLD = 0.12   # nor shorter than this, unless the next word starts first
+
+
+def pulse_words(lines):
+    """
+    Flatten caption lines into one timed word list with no overlaps.
+
+    Whisper's word timings are contiguous and occasionally run backwards, so a
+    naive minimum hold pushes a short word past its neighbour's start and two
+    words show at once. Starts are forced monotonic first, then each end is
+    clamped to the next start, and the result is checked rather than trusted.
+    """
+    words = [w for ln in lines for w in ln["words"] if str(w.get("w", "")).strip()]
+    out, last = [], None
+    for w in words:
+        s = w["s"] if last is None else max(w["s"], last)
+        out.append({"w": str(w["w"]).strip(), "s": round(s, 3), "e": w["e"]})
+        last = s
+    for k, w in enumerate(out):
+        nxt = out[k + 1]["s"] if k + 1 < len(out) else None
+        e = max(w["e"], w["s"] + PULSE_MIN_HOLD)
+        e = min(e, w["s"] + PULSE_MAX_HOLD)
+        if nxt is not None:
+            e = min(e, nxt)
+        w["e"] = round(e, 3)
+    for k in range(len(out) - 1):
+        if out[k]["e"] > out[k + 1]["s"]:
+            raise CardValueError(
+                f"pulse captions: word {k} ({out[k]['w']!r}) still overlaps the next word "
+                "after clamping. Refusing to build captions that stack.")
+    return out
+
+
+def pulse_captions(lines, cid="caps"):
+    """
+    The `pulse` caption mode (reel-compose.py --captions pulse). Style
+    independent: white heavy caps with a black outline read on any footage and
+    next to any card style. A style module may define its own pulse_captions to
+    restyle it; the composer uses this one otherwise.
+
+    Each word is its own .cline, so caption_moves and --caption-top move and
+    resize pulse captions exactly as they do phrase captions.
+    """
+    words = pulse_words(lines)
+    css = f"""
+#{cid}{{top:{PULSE_TOP}px;height:150px}}
+#{cid} .cline{{font-family:"Arial Black","Helvetica Neue",Arial,sans-serif;font-size:86px;
+  font-weight:900;letter-spacing:0;line-height:1;text-transform:uppercase;color:#fff;
+  -webkit-text-stroke:8px #000;paint-order:stroke fill;
+  text-shadow:0 5px 0 rgba(0,0,0,.85),0 8px 26px rgba(0,0,0,.6)}}"""
+    html = "".join(f'<div class="cline" id="p{k}">{_esc(w["w"])}</div>'
+                   for k, w in enumerate(words))
+    data = [{"s": w["s"], "e": w["e"]} for w in words]
+    js = f"""
+const PULSE = {json.dumps(data)};
+PULSE.forEach((w,k)=>{{
+  tl.set("#p"+k,{{opacity:0}},0);
+  tl.set("#p"+k,{{opacity:1}},w.s);
+  tl.set("#p"+k,{{opacity:0}},w.e);
+}});"""
+    return css, f'<div id="{cid}">{html}</div>', js
 
 
 # --------------------------------------------------------------------------
@@ -720,10 +806,15 @@ CARD_FIELDS = {
 }
 
 
-def render_card(i, c):
+def render_with(registry, i, c):
+    """
+    Check one card's timing fields, validate it, and render it with the card
+    function the given style registry maps its type to. Every style routes
+    through here, so a card is validated the same way whichever style draws it.
+    """
     t = c.get("type")
-    if t not in REGISTRY:
-        raise SystemExit(f"unknown card type '{t}'. Available: {', '.join(sorted(REGISTRY))}")
+    if t not in registry:
+        raise SystemExit(f"unknown card type '{t}'. Available: {', '.join(sorted(registry))}")
     if t == "hook":
         c = dict(c)
         c["at"] = 0
@@ -731,7 +822,11 @@ def render_card(i, c):
         raise SystemExit(f"card {i} ({t}) is missing required field 'at'")
     if t != "endcard" and "out" not in c:
         raise SystemExit(f"card {i} ({t}) needs an 'out' time (endcard is the only card that may run to the end)")
-    return REGISTRY[t](i, normalise_card(i, c))
+    return registry[t](i, normalise_card(i, c))
+
+
+def render_card(i, c):
+    return render_with(REGISTRY, i, c)
 
 
 def _cli():

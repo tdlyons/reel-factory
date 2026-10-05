@@ -15,10 +15,18 @@
   Slots: %%KICKER%%, %%HEAD_LINE1%%, %%HEAD_HIGHLIGHT%%, %%BRAND%%
 -->
 <html><head><meta charset="utf-8"><style>
+  /* Match the card style you composed with by changing these four values.
+     clean (default): as below.
+     panel:           --accent:#5CC8FF; --kicker:#B8E6FF; --on-accent:#061018;
+                      --font-head:"Avenir Next Condensed","Roboto Condensed","Arial Narrow",sans-serif
+     example-brand:   --accent:#8B7CF6; --kicker:#D4CCFF; --on-accent:#FFFFFF; the panel --font-head
+     your own style:  copy --accent, --accent-soft (as --kicker) and --on-accent from its file. */
+  :root{--accent:#0071e3;--kicker:#7fc4ff;--on-accent:#0a0a0c;
+    --font-head:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Arial,sans-serif}
   *{margin:0;padding:0;box-sizing:border-box}
   html,body{width:1280px;height:720px;overflow:hidden}
   .stage{position:relative;width:1280px;height:720px;background:#0a0a0c;
-    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Arial,sans-serif}
+    font-family:var(--font-head)}
   /* thumb-bg.jpg must sit next to this file: a 1080x1920 frame lifted from the finished cut.
      The source is 9:16, so it is never cropped to fill. It is blurred for the field and
      shown intact in the panel on the right. */
@@ -28,15 +36,15 @@
     background-image:url('thumb-bg.jpg');background-size:cover;background-position:center 30%;
     box-shadow:0 26px 70px rgba(0,0,0,.62);border:3px solid rgba(255,255,255,.14)}
   .head{position:absolute;left:64px;top:96px;width:740px}
-  .kick{font-size:26px;font-weight:700;letter-spacing:.20em;color:#7fc4ff;text-transform:uppercase;
+  .kick{font-size:26px;font-weight:700;letter-spacing:.20em;color:var(--kicker);text-transform:uppercase;
     margin-bottom:22px;white-space:nowrap}
   .h1{font-size:92px;font-weight:800;line-height:.94;color:#fff;letter-spacing:-.03em}
-  .h1 .hl{color:#0a0a0c;background:#0071e3;padding:2px 16px 8px;border-radius:10px;
-    display:inline-block;margin-top:14px;box-shadow:0 8px 26px rgba(0,113,227,.45)}
+  .h1 .hl{color:var(--on-accent);background:var(--accent);padding:2px 16px 8px;border-radius:10px;
+    display:inline-block;margin-top:14px;box-shadow:0 8px 26px color-mix(in srgb, var(--accent) 45%, transparent)}
   /* max-width keeps the brand line clear of the panel, which starts at x=860 */
   .brand{position:absolute;left:64px;bottom:56px;max-width:740px;white-space:nowrap;overflow:hidden;
     font-size:25px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:#aeb4bf}
-  .brand .dot{color:#0071e3;margin:0 12px}
+  .brand .dot{color:var(--accent);margin:0 12px}
   .brand b{color:#fff}
 </style></head><body>
   <div class="stage">
