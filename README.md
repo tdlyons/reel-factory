@@ -1,6 +1,6 @@
 # Reel Factory
 
-**A DATT AI Campus release. Built by Tom Lyons. https://www.skool.com/datt-ai-campus**
+**From the Vault. Built by Tom Lyons. https://vault.lyonsinternational.com**
 
 Reel Factory is a Claude Code skill that takes one raw talking-head recording and produces the finished vertical cuts you would otherwise spend an evening assembling: a hook card that is fully opaque on the first frame, burned-in captions timed to the words that were actually spoken, motion-graphic cards carrying the numbers the video is arguing about, a separate platform-neutral cut that ends before any platform-specific call to action, a YouTube thumbnail, an Instagram cover frame with the hook on it, and per-platform copy that is scored against a hard threshold and rewritten for up to five rounds. Between each of those stages sits a gate that either passes or stops the run, including one that re-transcribes the rendered file to prove the neutral cut does not still say "comment TEARDOWN".
 
@@ -224,4 +224,4 @@ Two third-party pieces this package tells you to fetch are not MIT and are not d
 
 ---
 
-*Reel Factory is a DATT AI Campus release, built by Tom Lyons. More agent workflows, and the people building them, at https://www.skool.com/datt-ai-campus*
+*Reel Factory is a free release from the Vault, built by Tom Lyons. More guides, skills and prompts, all free, at https://vault.lyonsinternational.com*

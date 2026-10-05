@@ -457,4 +457,4 @@ Pick the keyword with `--peek` before recording, because it has to match what wa
 
 ---
 
-*Part of the Reel Factory release from DATT AI Campus. Built by Tom Lyons.*
+*Part of the Reel Factory release from the Vault (https://vault.lyonsinternational.com). Built by Tom Lyons.*
