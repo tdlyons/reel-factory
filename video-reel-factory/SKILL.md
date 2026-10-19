@@ -17,7 +17,7 @@ Throughout this skill, "ask the owner" means stop and ask the person whose video
 
 ```
 GATE 0 (subject, card style, caption style)
-  -> prep -> cards -> [trim] -> compose -> PREVIEW (+ frame-0 judge) -> render -> composite
+  -> [clean cut, raw takes only] -> prep -> cards -> [trim] -> compose -> PREVIEW (+ frame-0 judge) -> render -> composite
      -> [card sound] -> VERIFY -> thumbnail + cover -> copy -> score
      -> OWNER APPROVES (cut, repetition, captions, cards, thumb, cover, copy) -> hand off files
                                        |
@@ -112,6 +112,47 @@ Freshness is not an item here. A tool from months ago is new to a viewer who has
 ### Adding a subject type
 
 A subject type is three things written into this file under the two above: a name and a one-line meaning in the Question 1 table, a column in the beat table saying what each of the six beats contains for that type (or a beat list of its own, if the six do not fit), and a rubric of four or five items, each scoreable 0 to 100 with a stated reason for a 0. Then add its card suggestions per beat. A test-and-verdict video, where the verdict is said out loud and shown on a card, or a screen walkthrough, where screenshots carry the video and cards must never cover their text, are the kind of format worth adding this way once you have made a few and know what fails.
+
+---
+
+## Phase 0.5: Clean cut (raw takes only)
+
+**Skip this phase when the owner says the video is already edited.** Their cut is final, so make no cuts at all. Run it on every raw take.
+
+`reel-cut.py` removes dead air, breath pauses, retakes, false starts, filler-only blips and "let me redo that" asides. It writes `clean.mp4`, and every phase after this one runs on that file as if the speaker had recorded one perfect take. Captions, cards and the platform cut never need remapping.
+
+How it decides:
+
+- **The waveform decides where to cut.** The in point is the first frame where the voice crosses a hard threshold, so the breath before it is left out. The out point is where the voice drops below a soft threshold, plus one frame, so word tails stay. Whisper timings are never used as cut points, because they drift by up to 0.3s.
+- **Cuts go between phrases, never inside one.** A stutter or "um" inside a phrase is flagged, not cut, because cutting it clips the words around it. A filler with silence on both sides is cut. This idea comes from Nate Herk's herk-edit-kit (MIT).
+- **A natural beat stays.** The cut keeps 0.16s after a sentence end and 0.10s after a comma, taken from the room tone of the recording. Other gaps go to zero.
+- **Each block is transcribed from its own audio.** One whole-file Whisper pass drifted 20 seconds on a 6 minute take, which made a spoken call to action look like an empty block about to be cut. Whisper's noise lines ("Bye.", "Thank you for watching.") are filtered out.
+- **Pauses come from a 20ms loudness curve.** A mouse click resets silencedetect, so real pauses hide inside blocks ("So, Claude, so Claude"). Block edges are also pulled in to the first and last word, so keyboard noise does not keep a pause long.
+- **Restarts are split at sentence ends that sit on a short dip,** because speakers often restart a line without pausing.
+- **Repeats across a pause are cut as whole blocks:** "So, Claude, | so Claude shipped".
+- **Off-camera asides are proposed for cutting:** a short line, or a tight cluster of up to 5 words, alone between long silences.
+- **Screen demos are kept.** When a screen recording is part of the frame, a silent pause is cut except for the seconds where the screen scrolls or clicks. Looping animations on a web page do not count. If the final layout will not show that screen (for example, the speaker goes full screen and the screen content is rebuilt as graphics), pass `--no-demo`, or the reel keeps pauses where nothing visible happens.
+
+```bash
+python3 $SKILL/scripts/reel-cut.py plan <raw.mp4> --outdir <dir> [--model small] [--no-demo]
+```
+
+**Gate 0.5. Read `CUT-PLAN.md` line by line. This is the judgement step.** The detector catches retakes that share words. It misses retakes worded differently, and it cannot tell emphasis ("never, never") from a stutter. Read the KEPT lines top to bottom, the way they will play, and look for the same idea said twice in different words. No word rule catches "it is grabbing all of the details from the local session. It is picking up the session exactly the way you left it." A person does.
+
+**Keep the second take, never the first.** This applies to retakes and to restatements. The second take is almost always the one the speaker meant. If the join then reads badly, fix the join, not the choice of take. For example, drop a doubled word by moving the in point of the kept block to a measured loudness dip with `--set-in ID=SECONDS`. Test the join before rendering: concatenate the two sides and transcribe them.
+
+Override any decision by block number:
+
+```bash
+python3 $SKILL/scripts/reel-cut.py apply --plan <dir>/cut-plan.json --out <dir>/clean.mp4 \
+  [--keep 4] [--cut 12] [--set-in 17=84.32]
+```
+
+`apply` renders in one pass, because segments encoded one by one drift out of lip sync. The audio is stereo AAC taken from the untouched source track. Then it re-transcribes the cut and writes `CUT-VERIFY.md`. **Exit code 2 means a word differs at a join.** Listen to that join. Fix it by keeping or cutting the whole block, never by moving a cut inside a phrase. Lines under "heard extra" are usually words the first Whisper pass skipped. The audio still has them, so they are not a problem.
+
+Then run Phase 1 on `clean.mp4` instead of the raw file.
+
+Known limit: a restart inside a sentence with no pause in it ("Claude, so Claude", "is, is") stays in the cut and is flagged. Cut it in Phase 2.5 if the owner hears it.
 
 ---
 
