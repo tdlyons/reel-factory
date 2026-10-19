@@ -32,7 +32,7 @@ Install instructions live at https://claude.com/claude-code
 
 ## 3. python3
 
-The pipeline scripts (`reel-prep.py`, `reel_markers.py`, `reel_cards.py` and the other `reel_cards_*.py` style modules, `reel-compose.py`, `reel-trim.py`, `reel-preview.py`, `reel-sfx.py`, `reel-verify.py`) use the Python standard library plus openai-whisper for transcription, covered in step 6. Nothing else. Python 3.8 or newer is enough.
+The pipeline scripts (`reel-cut.py`, `reel-prep.py`, `reel_markers.py`, `reel_cards.py` and the other `reel_cards_*.py` style modules, `reel-compose.py`, `reel-trim.py`, `reel-preview.py`, `reel-sfx.py`, `reel-verify.py`) use the Python standard library plus openai-whisper for transcription, covered in step 6. Nothing else. Python 3.8 or newer is enough.
 
 Check: `python3 --version`
 

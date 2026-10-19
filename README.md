@@ -32,6 +32,7 @@ For a single recording, the pipeline produces:
 | `prep.json` | word-level transcript, caption lines clamped to end just before the next one starts, silent gaps, cut plan |
 | `transcript.json`, `words.json` | raw Whisper output and a flat word list with timings |
 | `audio.wav` | a 16 kHz mono copy of the source audio, the wav Whisper was handed, left on disk so you can hear what the model heard. It is a by-product rather than a cache, rewritten on every run, and it is a verbatim copy of what was said, so delete it when you are done |
+| `clean.mp4`, `CUT-PLAN.md`, `CUT-VERIFY.md` | only for a raw take: the take with dead air, breath pauses, retakes, false starts and off-camera asides removed, the plan you review before it renders, and a re-transcription check of every join |
 | `prep_trim.json`, `cards_trim.json`, `trimmed.mov` | only when you cut filler: the prep and cards remapped to the trimmed timeline, and the trimmed source built from the command `reel-trim.py` prints |
 | `<project>/index.html` | the Hyperframes composition: the frame-0 hook, captions and your motion-graphic cards, animated with GSAP |
 | `preview/preview-<t>s.png`, `preview-sheet.png` | the composition on top of the real footage at the times you chose, before anything renders. `preview-0s.png` is what the frame-0 reviewer grades |
@@ -84,6 +85,12 @@ CAPS=phrase            # caption style: phrase, pulse, or none for pre-captioned
 RAW=$PWD/raw.mp4       # your recording, sitting in the directory you are standing in
 PREP=$PWD/raw_prep     # where reel-prep.py writes, next to the recording
 CARDS=$PWD/cards.json  # you write this one by hand in step 2
+
+# 0. clean cut (raw takes only): remove pauses, retakes and asides, then prep clean.mp4
+#    python3 $SKILL/scripts/reel-cut.py plan "$RAW" --outdir "$PWD/cut"
+#    read cut/CUT-PLAN.md, then:
+#    python3 $SKILL/scripts/reel-cut.py apply --plan cut/cut-plan.json --out "$PWD/cut/clean.mp4"
+#    and set RAW=$PWD/cut/clean.mp4 before step 1 (SKILL.md Phase 0.5)
 
 # 1. prep: transcribe, plan the cut, check for a mirrored source
 python3 $SKILL/scripts/reel-prep.py "$RAW" --keywords TEARDOWN
@@ -155,6 +162,10 @@ In practice you do not type most of this. You hand Claude Code the recording and
        v
   [0] GATE 0          subject type and viewer, card style, caption style
        |
+       v
+  [0.5] CLEAN CUT     raw takes only: cut dead air, retakes, false starts and
+       |              asides on the waveform, keep screen demos
+       |--- GATE 0.5 -> read the kept lines, keep the second take, verify joins
        v
   [1] PREP            whisper transcript, caption lines, silent gaps,
        |              platform-marker scan, neutral cut point, mirror check
@@ -261,6 +272,7 @@ LICENSE                MIT
 video-reel-factory/    the skill itself, this is the folder you copy
   SKILL.md
   scripts/
+    reel-cut.py          clean-cut a raw take: dead air, retakes, false starts, asides
     reel-prep.py         transcribe, plan cuts, detect platform-locking speech
     reel_markers.py      the one list of platform-locking phrases, shared by prep and verify
     reel_cards.py        the `clean` card style, plus the validation and pulse captions every style shares
