@@ -258,6 +258,22 @@ Cinematic captions need a matte of the person so the hero word can sit behind th
 
 Never mix two caption styles in one video. Whatever the style, the safe zone, the opaque hook on frame 0, and the caption proof read all still apply.
 
+## Effects
+
+Every effect has a plain name, and you ask for it by that name: "use typewriter on that line", "push in while I say this", "make it warm". `python3 video-reel-factory/scripts/reel_fx.py --list` prints every one. The list comes from the code, so anything on it works.
+
+| group | what is in it |
+|---|---|
+| Text motion | 23 ways for words to arrive (`blur-in`, `typewriter`, `word-bounce`, `line-reveal`, `shimmer` and more), 5 exits |
+| Title looks | `plain`, `plate`, `takeover`, `rule`, `ticker` |
+| Caption styles | `phrase`, `pulse`, `keyword`, `stack` |
+| Camera moves | `push-in`, `pull-out`, `punch-in`, `pan`, `reframe`, on your own footage |
+| Cutaways | a full-frame photo or clip over the speaker, with a transition in and out: `cut`, `fade`, `zoom`, `whip`, `blur`, `wipe` |
+| Colour grades | `cinematic`, `warm`, `cool`, `film`, `mono`. Off unless you ask. Footage only |
+| Sound | a card sound, and a music bed that dips under your voice. You bring the files |
+
+The details are in the "effects library" section of `video-reel-factory/SKILL.md`.
+
 ## Prerequisites
 
 Claude Code, python3, Node.js 18 or newer, ffmpeg and ffprobe, the OpenAI Whisper Python package, the `hyperframes` npm package run through npx, a vendored copy of GSAP, Playwright for the preview and thumbnail steps, optionally tesseract for the mirrored-source check, and optionally a short sound effect of your own for the card sound. Step by step setup with a verification command for each is in [INSTALL.md](INSTALL.md).
@@ -276,6 +292,7 @@ video-reel-factory/    the skill itself, this is the folder you copy
     reel-prep.py         transcribe, plan cuts, detect platform-locking speech
     reel_markers.py      the one list of platform-locking phrases, shared by prep and verify
     reel_cards.py        the `clean` card style, plus the validation and pulse captions every style shares
+    reel_fx.py           the effects library: text motions, title looks, cutaways, camera moves, grades, music
     reel_cards_panel.py  the `panel` card style
     reel_cards_example_brand.py   `panel` recoloured, the file to copy for your own colours
     reel-compose.py      assemble the composition from prep.json + cards.json

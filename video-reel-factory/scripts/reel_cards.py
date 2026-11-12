@@ -868,7 +868,13 @@ def render_with(registry, i, c):
     """
     t = c.get("type")
     if t not in registry:
-        raise SystemExit(f"unknown card type '{t}'. Available: {', '.join(sorted(registry))}")
+        # The effects library adds card types every style shares (title,
+        # checklist, cutaway). A style that draws its own wins over these.
+        import reel_fx
+        if t not in reel_fx.REGISTRY:
+            raise SystemExit(f"unknown card type '{t}'. Available: "
+                             f"{', '.join(sorted(set(registry) | set(reel_fx.REGISTRY)))}")
+        registry = reel_fx.REGISTRY
     if t == "hook":
         c = dict(c)
         c["at"] = 0
