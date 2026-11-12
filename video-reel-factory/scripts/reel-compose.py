@@ -79,10 +79,15 @@ try:
 except ImportError:
     sys.exit("error: could not import reel_cards.py.\n"
              "       It must sit in the same directory as reel-compose.py.")
+try:
+    import reel_fx as FX
+except ImportError:
+    sys.exit("error: could not import reel_fx.py.\n"
+             "       It must sit in the same directory as reel-compose.py.")
 
 SCRIPTS = Path(__file__).resolve().parent
 DEFAULT_STYLE = "clean"
-CAPTION_MODES = ("phrase", "pulse", "none")
+CAPTION_MODES = ("phrase", "pulse", "keyword", "stack", "none")
 # Everything reel-compose.py calls on a style module.
 STYLE_INTERFACE = ("base_css", "captions", "render_card", "REGISTRY")
 
@@ -211,35 +216,45 @@ def resolve_flip(prep):
 
 
 def composite_command(cut, fps, flip, finished_audio=False, endcard_tail=False,
-                      out_name=None):
+                      out_name=None, grade=None, footage=None, music=None, duration=None):
     """
     The composite for one variant, as printable lines. The full-length and the
     neutral cut are one recipe: the neutral cut only adds the trim, a short audio
     fade, and with --endcard the frozen tail the end card sits on.
+
+    grade and footage (the camera moves) are filters on the footage, applied
+    before the overlay is laid on, so they never touch a card or a caption.
+    music adds a third input, mixed under the voice.
     """
     audio = "" if finished_audio else CLEAN_A
+    look = "".join("," + f for f in (FX.grade_filter(grade), FX.footage_filter(footage or [], fps)) if f)
+    inputs = "ffmpeg -y -i SRC -i overlay.mov"
+    if music:
+        inputs += f' -stream_loop -1 -i "{music["file"]}"'
     if cut is None:
         out_name = out_name or "OUT.mp4"
         a_chain = audio or "anull"
-        return [
-            "ffmpeg -y -i SRC -i overlay.mov -filter_complex \\",
-            f'  "[0:v]{flip}fps={fps},{NORMALISE_V}[bg];\\',
-            "   [bg][1:v]overlay=0:0:format=auto:shortest=1[v];\\",
-            f'   [0:a]{a_chain}[a]" \\',
-            f'  -map "[v]" -map "[a]" {ENCODE} -r {fps} {out_name}',
-        ]
-    out_name = out_name or "OUT-neutral.mp4"
-    tail_v = f",tpad=stop_mode=clone:stop_duration={TAIL}" if endcard_tail else ""
-    if endcard_tail:
-        fade = f"afade=t=out:st={round(cut - 0.5, 2)}:d=0.5,apad=pad_dur={TAIL}"
+        v_line = f'  "[0:v]{flip}fps={fps},{NORMALISE_V}{look}[bg];\\'
     else:
-        fade = f"afade=t=out:st={round(cut - FADE_OUT, 2)}:d={FADE_OUT}"
-    a_chain = f"atrim=0:{cut},asetpts=PTS-STARTPTS," + (f"{audio}," if audio else "") + fade
+        out_name = out_name or "OUT-neutral.mp4"
+        tail_v = f",tpad=stop_mode=clone:stop_duration={TAIL}" if endcard_tail else ""
+        if endcard_tail:
+            fade = f"afade=t=out:st={round(cut - 0.5, 2)}:d=0.5,apad=pad_dur={TAIL}"
+        else:
+            fade = f"afade=t=out:st={round(cut - FADE_OUT, 2)}:d={FADE_OUT}"
+        a_chain = f"atrim=0:{cut},asetpts=PTS-STARTPTS," + (f"{audio}," if audio else "") + fade
+        v_line = (f'  "[0:v]trim=0:{cut},setpts=PTS-STARTPTS,{flip}fps={fps},'
+                  f'{NORMALISE_V}{look}{tail_v}[bg];\\')
+    if music:
+        mix, _ = FX.music_chain(music, "voice", duration)
+        a_lines = [f"   [0:a]{a_chain}[voice];\\"] + [f"   {m};\\" for m in mix[:-1]] + [f'   {mix[-1]}" \\']
+    else:
+        a_lines = [f'   [0:a]{a_chain}[a]" \\']
     return [
-        "ffmpeg -y -i SRC -i overlay.mov -filter_complex \\",
-        f'  "[0:v]trim=0:{cut},setpts=PTS-STARTPTS,{flip}fps={fps},{NORMALISE_V}{tail_v}[bg];\\',
+        inputs + " -filter_complex \\",
+        v_line,
         "   [bg][1:v]overlay=0:0:format=auto:shortest=1[v];\\",
-        f'   [0:a]{a_chain}[a]" \\',
+        *a_lines,
         f'  -map "[v]" -map "[a]" {ENCODE} -r {fps} {out_name}',
     ]
 
@@ -363,6 +378,9 @@ def main():
     try:
         cards = [C.normalise_card(i, c) for i, c in enumerate(spec["cards"])]
         moves = C.normalise_caption_moves(spec.get("caption_moves"))
+        grade = FX.normalise_grade(spec.get("grade"))
+        music = FX.normalise_music(spec.get("music"))
+        FX.normalise_footage(spec.get("footage"))   # checked again once the length is known
     except C.CardValueError as e:
         sys.exit(f"error: {e}")
 
@@ -453,6 +471,12 @@ def main():
         cards = [c for c in cards if c.get("type") != "endcard"]
         duration = round(src_dur, 2)
 
+    # ---- camera moves, clipped to this variant's length
+    try:
+        footage = FX.normalise_footage(spec.get("footage"), a.cut if a.cut is not None else duration)
+    except C.CardValueError as e:
+        sys.exit(f"error: {e}")
+
     # ---- captions, trimmed to the cut
     lines = prep["caption_lines"]
     if a.cut is not None:
@@ -476,15 +500,19 @@ def main():
         try:
             if a.captions == "pulse":
                 cap_css, cap_html, cap_js = getattr(S, "pulse_captions", C.pulse_captions)(lines)
+            elif a.captions in FX.CAPTION_FUNCS:
+                cap_css, cap_html, cap_js = getattr(
+                    S, a.captions + "_captions", FX.CAPTION_FUNCS[a.captions])(lines)
             else:
                 cap_css, cap_html, cap_js = S.captions(lines)
         except C.CardValueError as e:
             sys.exit(f"error: {e}")
         cap_js += C.caption_moves_js(moves)
 
-    css_parts, html_parts, js_parts = [S.base_css(), cap_css], [], [cap_js]
+    css_parts, html_parts, js_parts = [S.base_css(), FX.base_css(), cap_css], [], [cap_js]
     if a.caption_top is not None:
         css_parts.append(f"\n#caps{{top:{a.caption_top}px}}")
+    n_cutaways = 0
     for i, c in enumerate(cards):
         if c.get("type") != "endcard" and c.get("out", 0) > duration:
             sys.exit(f"error: card {i} ({c['type']}) exits at {c['out']}s but the composition "
@@ -493,7 +521,12 @@ def main():
             css, html, js = S.render_card(i, c)
         except C.CardValueError as e:
             sys.exit(f"error: {e}")
-        css_parts.append(css); html_parts.append(html); js_parts.append(js)
+        css_parts.append(css); js_parts.append(js)
+        # A cutaway is footage, so it is drawn first and every card sits on top of it.
+        if c.get("type") == "cutaway":
+            html_parts.insert(n_cutaways, html); n_cutaways += 1
+        else:
+            html_parts.append(html)
 
     # ---- dead air: long stretches of talking head with nothing to look at.
     # Advisory. Fill a gap with something that shows the claim being made at that
@@ -584,8 +617,8 @@ window.__timelines["main"] = tl;
                 print(f"        build from https://gsap.com/ into {gs}")
 
     for c in cards:
-        if c.get("type") == "image" and not (proj / str(c["src"])).exists():
-            print(f"  WARN: image card at {c['at']}s points at {c['src']}, which is not in "
+        if c.get("type") in ("image", "cutaway") and not (proj / str(c["src"])).exists():
+            print(f"  WARN: {c['type']} card at {c['at']}s points at {c['src']}, which is not in "
                   f"{proj}. Copy it in before rendering or the card renders empty.")
 
     flip, flip_note = resolve_flip(prep)
@@ -605,8 +638,15 @@ window.__timelines["main"] = tl;
             print(f"  platform cut at {a.cut}s, ending on live footage")
     if a.finished_audio:
         print("  audio: finished mix, re-encoded only")
+    if grade:
+        print(f"  grade: {grade}, on the footage only")
+    if footage:
+        print("  camera moves: " + ", ".join(f"{m['move']}@{m['at']}s" for m in footage))
+    if music:
+        print(f"  music: {music['file']} at {music['level']} dB" + (", ducked under the voice" if music["duck"] else ""))
     print(f"\n  composite with (SRC is your recording, overlay.mov the absolute path of the render):")
-    for line in composite_command(a.cut, a.fps, flip, a.finished_audio, a.endcard):
+    for line in composite_command(a.cut, a.fps, flip, a.finished_audio, a.endcard,
+                                  grade=grade, footage=footage, music=music, duration=duration):
         print(f"    {line}")
 
 

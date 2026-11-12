@@ -270,6 +270,54 @@ Then each card:
 
 ---
 
+## The effects library
+
+Every effect has a plain name, and the owner can ask for one by that name ("use typewriter on that line", "push in while I say this", "make it warm"). `python3 $SKILL/scripts/reel_fx.py --list` prints every name with one line on what it does. That list is generated from the code, so anything on it works. Do not promise an effect that is not on it.
+
+Effects live in two places in `cards.json`, because the pipeline has two layers.
+
+**Cards, drawn in the overlay.** These work in every style and pick up the style's colours.
+
+| type | what it is | fields |
+|---|---|---|
+| `title` | text over the footage, with a named motion in and a named exit | `text` (supports `**accent**`, and `\n` for a line break), `motion`, `exit`, `look`, `sub`, `size`, `y`, `align` |
+| `checklist` | items that tick on one at a time | `items`, `title`, `stagger`, `y` |
+| `cutaway` | a full-frame photo or clip over the speaker, with a named transition in and out. The speaker's audio carries on | `src`, `in`, `exit`, `move`, `from` |
+
+A `title` has 23 motions (`blur-in`, `typewriter`, `word-bounce`, `line-reveal`, `shimmer` and the rest), 5 exits, and 5 looks: `plain` (white text on the footage), `plate` (on a card surface), `takeover` (a giant phrase over a dark wash, full frame), `rule` (a title with a rule that draws in under it, plus an optional `sub`), and `ticker` (a phrase that sweeps across a coloured band).
+
+```json
+{"type":"title","at":6.0,"out":9.0,"text":"The night shift","look":"rule",
+ "sub":"What ran while I was **asleep**","motion":"line-reveal","exit":"lift"}
+```
+
+A `cutaway` has 6 transitions for `in` and `exit`: `cut`, `fade`, `zoom`, `whip`, `blur`, `wipe`. `move` is the slow drift while it is up (`push`, `pull`, `pan`, `none`), so a photo never sits frozen. Copy the file into the project like an `image` card's. Cards timed inside a cutaway sit on top of it. A clip plays from `from` seconds in, with its own sound off. `reel-preview.py` shows a clip's first frame only; the render plays it.
+
+```json
+{"type":"cutaway","at":20.0,"out":23.0,"src":"assets/office.jpg","in":"fade","exit":"wipe","move":"push"}
+```
+
+**The footage and the sound, applied in the composite.** These are top-level keys next to `"cards"`:
+
+```json
+{"grade": "warm",
+ "music": {"file": "/full/path/to/bed.mp3", "level": -20, "duck": true},
+ "footage": [{"move": "push-in", "at": 6.0, "out": 9.3},
+             {"move": "punch-in", "at": 10.0, "out": 12.0, "amount": 1.18},
+             {"move": "pan", "at": 14.0, "out": 19.5}],
+ "cards": []}
+```
+
+- `footage` is the camera moves on the recording itself: `push-in`, `pull-out`, `punch-in`, `pan`, `reframe`. `amount` is the zoom (1.02 to 1.6). `x` and `y` are where the zoom points, from 0 to 1, and `y` defaults to 0.38, about eye height. Moves cannot overlap. A move scales the picture up, so anything burned into the recording near the edge leaves the frame: check it. The overlay does not move with the footage, so cards and captions stay where they are.
+- `grade` is one of `cinematic`, `warm`, `cool`, `film`, `mono`. Never on by default. It goes on the footage before the overlay, so cards and captions keep their own colours.
+- `music` mixes a bed under the voice. No music ships with this skill: use a track the owner has the rights to. With `duck` on (the default) the bed dips when someone speaks and comes back in the gaps. `level` is in dB.
+
+`reel-compose.py` validates all three and writes them into the composite command it prints. Run that printed command as usual. With no `footage`, `grade` or `music` in `cards.json`, the command is the same as before. A camera move adds a double-size scale to the composite, so that step runs slower.
+
+**Use them the way an editor would.** One motion family per reel reads as a style, six reads as a demo. A camera move needs a reason: push in while a point builds, punch in on the line that matters. A grade is a choice about the whole reel, so ask before adding one. Preview every title and cutaway on the real footage like any other card.
+
+---
+
 ## Phase 2.5: Trim (whenever someone hears filler)
 
 Talking-head takes repeat themselves, and the owner usually hears it the first time they watch the draft at full speed. Cutting a phrase is not one edit but four that must agree: the source video, the caption word timings, the card cues, and the neutral cut point. `reel-trim.py` owns all four from one list of cuts.
@@ -357,7 +405,7 @@ Compose the example `cards.json` with the new style, lint it, and preview it on 
 
 ### Caption styles
 
-`--captions phrase` is the default. `--captions pulse` shows one word at a time in heavy white caps with a black outline, centred at about 59% of the frame height, swapping hard with no fade. Word times are forced in order and clamped so no two words are ever on screen together, and the build refuses if any overlap survives. Pulse sits across the lower card band, so the caption band check warns about every lower card left at its default height: give each a `y` below the word, or move the captions with `caption_moves` while the card is up, and check it on the preview. `caption_moves` and `--caption-top` move pulse captions the same way they move phrase captions.
+`--captions phrase` is the default: a line at a time, with each word lit as it is spoken. `--captions keyword` shows the whole line at once in capitals with one key word in the accent colour (the longest word, or the word you mark with `"k": true` in `prep.json`). `--captions stack` shows two bold rows, and the second row stacks in when its first word is spoken. `--captions pulse` shows one word at a time in heavy white caps with a black outline, centred at about 59% of the frame height, swapping hard with no fade. Word times are forced in order and clamped so no two words are ever on screen together, and the build refuses if any overlap survives. Pulse sits across the lower card band, so the caption band check warns about every lower card left at its default height: give each a `y` below the word, or move the captions with `caption_moves` while the card is up, and check it on the preview. `caption_moves` and `--caption-top` move pulse captions the same way they move phrase captions.
 
 ### Cinematic captions
 
